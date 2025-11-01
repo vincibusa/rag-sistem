@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -28,38 +28,79 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { FileText, Download, Search, Filter, MoreVertical, Eye, Trash2, RefreshCw, Sparkles, Upload } from 'lucide-react'
+import { FileText, Download, Search, Filter, MoreVertical, Eye, Trash2, RefreshCw, Sparkles, Upload, ChevronLeft, ChevronRight } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-
-interface Document {
-	id: string
-	name: string
-	type: string
-	size: number
-	uploadedAt: string
-	status: 'processing' | 'ready' | 'error'
-	chunks?: number
-}
-
-// Mock data - sostituire con dati reali
-const mockDocuments: Document[] = []
+import { listDocuments, downloadDocument, ApiClientError } from '@/lib/api-client'
+import type { DocumentSummary } from '@/lib/types'
 
 export default function DocumentsPage() {
 	const [searchQuery, setSearchQuery] = useState('')
 	const [filterType, setFilterType] = useState<string>('all')
 	const [filterStatus, setFilterStatus] = useState<string>('all')
-	const [isLoading] = useState(false)
+	const [isLoading, setIsLoading] = useState(false)
+	const [documents, setDocuments] = useState<DocumentSummary[]>([])
+	const [total, setTotal] = useState(0)
+	const [limit] = useState(20)
+	const [offset, setOffset] = useState(0)
 
-	const documents = useMemo(() => {
-		return mockDocuments.filter((doc) => {
-			const matchesSearch = doc.name.toLowerCase().includes(searchQuery.toLowerCase())
-			const matchesType = filterType === 'all' || doc.type === filterType
-			const matchesStatus = filterStatus === 'all' || doc.status === filterStatus
+	const fetchDocuments = useCallback(async () => {
+		setIsLoading(true)
+		try {
+			const response = await listDocuments(limit, offset)
+			setDocuments(response.items)
+			setTotal(response.total)
+		} catch (error) {
+			const errorMessage =
+				error instanceof ApiClientError
+					? error.detail
+					: 'Errore nel caricamento dei documenti'
+			toast.error('Errore nel caricamento', {
+				description: errorMessage,
+			})
+		} finally {
+			setIsLoading(false)
+		}
+	}, [limit, offset])
+
+	useEffect(() => {
+		fetchDocuments()
+	}, [fetchDocuments])
+
+	const getFileTypeFromMime = (contentType: string): string => {
+		if (contentType.includes('pdf')) return 'PDF'
+		if (contentType.includes('wordprocessingml')) return 'Word'
+		if (contentType.includes('msword')) return 'Word'
+		if (contentType.includes('spreadsheetml')) return 'Excel'
+		if (contentType.includes('ms-excel')) return 'Excel'
+		if (contentType.includes('text/plain')) return 'Text'
+		return 'Unknown'
+	}
+
+	const mapStatus = (status: DocumentSummary['status']): 'processing' | 'ready' | 'error' => {
+		switch (status) {
+			case 'completed':
+				return 'ready'
+			case 'failed':
+				return 'error'
+			case 'pending':
+			case 'processing':
+			default:
+				return 'processing'
+		}
+	}
+
+	const filteredDocuments = useMemo(() => {
+		return documents.filter((doc) => {
+			const matchesSearch = doc.filename.toLowerCase().includes(searchQuery.toLowerCase())
+			const docType = getFileTypeFromMime(doc.content_type)
+			const matchesType = filterType === 'all' || docType === filterType
+			const mappedStatus = mapStatus(doc.status)
+			const matchesStatus = filterStatus === 'all' || mappedStatus === filterStatus
 			return matchesSearch && matchesType && matchesStatus
 		})
-	}, [searchQuery, filterType, filterStatus])
+	}, [documents, searchQuery, filterType, filterStatus])
 
 	const formatFileSize = (bytes: number): string => {
 		if (bytes < 1024) return `${bytes} B`
@@ -77,7 +118,7 @@ export default function DocumentsPage() {
 		})
 	}
 
-	const getStatusBadge = (status: Document['status']) => {
+	const getStatusBadge = (status: 'processing' | 'ready' | 'error') => {
 		switch (status) {
 			case 'processing':
 				return <Badge variant="secondary">Elaborazione</Badge>
@@ -91,27 +132,78 @@ export default function DocumentsPage() {
 	}
 
 	const handleDownload = async (documentId: string, documentName: string) => {
-		// TODO: Implementare download reale
-		toast.success(`Download avviato: ${documentName}`)
-		console.log('Download document:', documentId)
+		try {
+			const blob = await downloadDocument(documentId)
+			const url = window.URL.createObjectURL(blob)
+			const a = document.createElement('a')
+			a.href = url
+			a.download = documentName
+			document.body.appendChild(a)
+			a.click()
+			window.URL.revokeObjectURL(url)
+			document.body.removeChild(a)
+			toast.success(`Download completato: ${documentName}`)
+		} catch (error) {
+			const errorMessage =
+				error instanceof ApiClientError
+					? error.detail
+					: 'Errore durante il download'
+			toast.error('Errore download', {
+				description: errorMessage,
+			})
+		}
 	}
 
 	const handleView = (documentId: string) => {
-		// TODO: Implementare visualizzazione
-		toast.info('Apertura documento in corso...')
+		const doc = documents.find((d) => d.id === documentId)
+		if (!doc) return
+
+		if (doc.content_type.includes('pdf')) {
+			// For PDF, download and open in new tab
+			handleDownload(documentId, doc.filename).then(() => {
+				// Open in new tab if possible
+				toast.info('Apri il file scaricato per visualizzarlo')
+			})
+		} else {
+			toast.info('Download il file per visualizzarlo', {
+				description: 'Alcuni formati richiedono l\'applicazione locale',
+			})
+		}
 	}
 
-	const handleDelete = (documentId: string, documentName: string) => {
-		// TODO: Implementare eliminazione
-		toast.success(`Documento eliminato: ${documentName}`)
+	const handleDelete = async (documentId: string, documentName: string) => {
+		// TODO: Implementare eliminazione quando backend API sarà disponibile
+		toast.info('Funzionalità di eliminazione in arrivo', {
+			description: `Eliminazione di ${documentName} non ancora implementata`,
+		})
 	}
 
-	const handleReprocess = (documentId: string) => {
-		// TODO: Implementare rielaborazione
-		toast.info('Rielaborazione avviata...')
+	const handleReprocess = async (documentId: string) => {
+		// TODO: Implementare rielaborazione quando backend API sarà disponibile
+		toast.info('Funzionalità di rielaborazione in arrivo', {
+			description: 'Rielaborazione documenti non ancora implementata',
+		})
 	}
 
-	const getFileIcon = (type: string) => {
+	const handleRefresh = () => {
+		fetchDocuments()
+		toast.success('Lista documenti aggiornata')
+	}
+
+	const handlePreviousPage = () => {
+		if (offset > 0) {
+			setOffset((prev) => Math.max(0, prev - limit))
+		}
+	}
+
+	const handleNextPage = () => {
+		if (offset + limit < total) {
+			setOffset((prev) => prev + limit)
+		}
+	}
+
+	const getFileIcon = (contentType: string) => {
+		const type = getFileTypeFromMime(contentType)
 		switch (type) {
 			case 'PDF':
 				return '📄'
@@ -147,17 +239,28 @@ export default function DocumentsPage() {
 								Lista Documenti
 							</CardTitle>
 							<CardDescription className="mt-1">
-								{documents.length} documento{documents.length !== 1 ? 'i' : ''} trovato
-								{documents.length !== mockDocuments.length && ` su ${mockDocuments.length}`}
+								{filteredDocuments.length} documento{filteredDocuments.length !== 1 ? 'i' : ''} trovato
+								{filteredDocuments.length !== total && ` su ${total}`}
 							</CardDescription>
 						</div>
-						<Button asChild size="sm">
-							<Link href="/dashboard/upload" className="flex items-center gap-2">
-								<Upload className="h-4 w-4" />
-								<span className="hidden sm:inline">Carica Documento</span>
-								<span className="sm:hidden">Carica</span>
-							</Link>
-						</Button>
+						<div className="flex items-center gap-2">
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={handleRefresh}
+								disabled={isLoading}
+								aria-label="Aggiorna lista"
+							>
+								<RefreshCw className={cn('h-4 w-4', isLoading && 'animate-spin')} />
+							</Button>
+							<Button asChild size="sm">
+								<Link href="/dashboard/upload" className="flex items-center gap-2">
+									<Upload className="h-4 w-4" />
+									<span className="hidden sm:inline">Carica Documento</span>
+									<span className="sm:hidden">Carica</span>
+								</Link>
+							</Button>
+						</div>
 					</div>
 				</CardHeader>
 				<CardContent>
@@ -214,7 +317,7 @@ export default function DocumentsPage() {
 								</div>
 							))}
 						</div>
-					) : documents.length === 0 ? (
+					) : filteredDocuments.length === 0 ? (
 						<div className="text-center py-16">
 							<div className="relative inline-block mb-6">
 								<div className="rounded-full bg-primary/10 p-6">
@@ -222,16 +325,16 @@ export default function DocumentsPage() {
 								</div>
 							</div>
 							<h3 className="text-lg font-semibold mb-2">
-								{mockDocuments.length === 0
+								{documents.length === 0
 									? 'Nessun documento caricato'
 									: 'Nessun documento corrisponde ai filtri'}
 							</h3>
 							<p className="text-sm text-muted-foreground mb-6 max-w-md mx-auto">
-								{mockDocuments.length === 0
+								{documents.length === 0
 									? 'Inizia caricando il tuo primo documento per iniziare a utilizzare il sistema RAG.'
 									: 'Prova a modificare i filtri di ricerca per trovare i documenti.'}
 							</p>
-							{mockDocuments.length === 0 && (
+							{documents.length === 0 && (
 								<Button asChild size="lg">
 									<Link href="/dashboard/upload" className="flex items-center gap-2">
 										<Upload className="h-4 w-4" />
@@ -254,89 +357,124 @@ export default function DocumentsPage() {
 									</TableRow>
 								</TableHeader>
 								<TableBody>
-									{documents.map((doc) => (
-										<TableRow
-											key={doc.id}
-											className="hover:bg-muted/50"
-										>
-											<TableCell className="font-medium">
-												<div className="flex items-center gap-3">
-													<div className="text-2xl flex-shrink-0">
-														{getFileIcon(doc.type)}
-													</div>
-													<div className="flex-1 min-w-0">
-														<p className="truncate font-medium">{doc.name}</p>
-														<div className="text-xs text-muted-foreground mt-1 sm:hidden flex items-center gap-2">
-															<span>{doc.type}</span>
-															<span>•</span>
-															<span>{formatFileSize(doc.size)}</span>
+									{filteredDocuments.map((doc) => {
+										const docType = getFileTypeFromMime(doc.content_type)
+										const mappedStatus = mapStatus(doc.status)
+										return (
+											<TableRow
+												key={doc.id}
+												className="hover:bg-muted/50"
+											>
+												<TableCell className="font-medium">
+													<div className="flex items-center gap-3">
+														<div className="text-2xl flex-shrink-0">
+															{getFileIcon(doc.content_type)}
+														</div>
+														<div className="flex-1 min-w-0">
+															<p className="truncate font-medium">{doc.filename}</p>
+															<div className="text-xs text-muted-foreground mt-1 sm:hidden flex items-center gap-2">
+																<span>{docType}</span>
+																<span>•</span>
+																<span>{formatFileSize(doc.size_bytes)}</span>
+															</div>
 														</div>
 													</div>
-												</div>
-											</TableCell>
-											<TableCell className="hidden sm:table-cell">
-												<Badge variant="outline">{doc.type}</Badge>
-											</TableCell>
-											<TableCell className="hidden md:table-cell text-muted-foreground">
-												{formatFileSize(doc.size)}
-											</TableCell>
-											<TableCell className="hidden lg:table-cell text-muted-foreground text-sm">
-												{formatDate(doc.uploadedAt)}
-											</TableCell>
-											<TableCell>{getStatusBadge(doc.status)}</TableCell>
-											<TableCell className="text-right">
-												<div className="flex items-center justify-end gap-1">
-													<Button
-														variant="ghost"
-														size="icon"
-														onClick={() => handleDownload(doc.id, doc.name)}
-														className="h-8 w-8"
-														aria-label="Scarica documento"
-													>
-														<Download className="h-4 w-4" />
-													</Button>
-													<DropdownMenu>
-														<DropdownMenuTrigger asChild>
-															<Button
-																variant="ghost"
-																size="icon"
-																className="h-8 w-8"
-																aria-label="Altre opzioni"
-															>
-																<MoreVertical className="h-4 w-4" />
-															</Button>
-														</DropdownMenuTrigger>
-														<DropdownMenuContent align="end">
-															<DropdownMenuItem onClick={() => handleView(doc.id)}>
-																<Eye className="h-4 w-4 mr-2" />
-																Visualizza
-															</DropdownMenuItem>
-															<DropdownMenuItem onClick={() => handleDownload(doc.id, doc.name)}>
-																<Download className="h-4 w-4 mr-2" />
-																Scarica
-															</DropdownMenuItem>
-															{doc.status === 'processing' && (
-																<DropdownMenuItem onClick={() => handleReprocess(doc.id)}>
-																	<RefreshCw className="h-4 w-4 mr-2" />
-																	Rielabora
+												</TableCell>
+												<TableCell className="hidden sm:table-cell">
+													<Badge variant="outline">{docType}</Badge>
+												</TableCell>
+												<TableCell className="hidden md:table-cell text-muted-foreground">
+													{formatFileSize(doc.size_bytes)}
+												</TableCell>
+												<TableCell className="hidden lg:table-cell text-muted-foreground text-sm">
+													{formatDate(doc.created_at)}
+												</TableCell>
+												<TableCell>{getStatusBadge(mappedStatus)}</TableCell>
+												<TableCell className="text-right">
+													<div className="flex items-center justify-end gap-1">
+														<Button
+															variant="ghost"
+															size="icon"
+															onClick={() => handleDownload(doc.id, doc.filename)}
+															className="h-8 w-8"
+															aria-label="Scarica documento"
+														>
+															<Download className="h-4 w-4" />
+														</Button>
+														<DropdownMenu>
+															<DropdownMenuTrigger asChild>
+																<Button
+																	variant="ghost"
+																	size="icon"
+																	className="h-8 w-8"
+																	aria-label="Altre opzioni"
+																>
+																	<MoreVertical className="h-4 w-4" />
+																</Button>
+															</DropdownMenuTrigger>
+															<DropdownMenuContent align="end">
+																<DropdownMenuItem onClick={() => handleView(doc.id)}>
+																	<Eye className="h-4 w-4 mr-2" />
+																	Visualizza
 																</DropdownMenuItem>
-															)}
-															<DropdownMenuSeparator />
-															<DropdownMenuItem
-																onClick={() => handleDelete(doc.id, doc.name)}
-																className="text-destructive focus:text-destructive"
-															>
-																<Trash2 className="h-4 w-4 mr-2" />
-																Elimina
-															</DropdownMenuItem>
-														</DropdownMenuContent>
-													</DropdownMenu>
-												</div>
-											</TableCell>
-										</TableRow>
-									))}
+																<DropdownMenuItem onClick={() => handleDownload(doc.id, doc.filename)}>
+																	<Download className="h-4 w-4 mr-2" />
+																	Scarica
+																</DropdownMenuItem>
+																{mappedStatus === 'processing' && (
+																	<DropdownMenuItem onClick={() => handleReprocess(doc.id)}>
+																		<RefreshCw className="h-4 w-4 mr-2" />
+																		Rielabora
+																	</DropdownMenuItem>
+																)}
+																<DropdownMenuSeparator />
+																<DropdownMenuItem
+																	onClick={() => handleDelete(doc.id, doc.filename)}
+																	className="text-destructive focus:text-destructive"
+																>
+																	<Trash2 className="h-4 w-4 mr-2" />
+																	Elimina
+																</DropdownMenuItem>
+															</DropdownMenuContent>
+														</DropdownMenu>
+													</div>
+												</TableCell>
+											</TableRow>
+										)
+									})}
 								</TableBody>
 							</Table>
+						</div>
+					)}
+
+					{/* Pagination */}
+					{total > limit && (
+						<div className="flex items-center justify-between mt-4 pt-4 border-t">
+							<div className="text-sm text-muted-foreground">
+								Mostrando {offset + 1}-{Math.min(offset + limit, total)} di {total} documenti
+							</div>
+							<div className="flex items-center gap-2">
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={handlePreviousPage}
+									disabled={offset === 0 || isLoading}
+									aria-label="Pagina precedente"
+								>
+									<ChevronLeft className="h-4 w-4 mr-1" />
+									Precedente
+								</Button>
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={handleNextPage}
+									disabled={offset + limit >= total || isLoading}
+									aria-label="Pagina successiva"
+								>
+									Successiva
+									<ChevronRight className="h-4 w-4 ml-1" />
+								</Button>
+							</div>
 						</div>
 					)}
 				</CardContent>

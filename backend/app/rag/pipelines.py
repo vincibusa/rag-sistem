@@ -21,12 +21,6 @@ from .vectorstore import ensure_collection, get_vectorstore
 
 IngestionKind = Literal["docling", "text"]
 
-_DEFAULT_SYSTEM_PROMPT = (
-    "Sei un assistente specializzato nell'analizzare i documenti caricati dal gestionale. "
-    "Rispondi utilizzando esclusivamente le informazioni fornite nei chunk recuperati. "
-    "Quando non trovi una risposta nelle fonti indicate, comunica chiaramente che l'informazione non è disponibile."
-)
-
 _DEFAULT_REWRITER_PROMPT = (
     "Riscrivi il prompt dell'utente rendendolo più specifico per una ricerca semantica "
     "su documenti aziendali. Mantieni il significato originale e riduci riferimenti ambigui."
@@ -75,12 +69,16 @@ def create_retrieval_pipeline() -> DagPipeline:
     )
 
     prompt_template = ChatPromptTemplate(
-        user_prompt_template="Domanda utente: {{ user_prompt }}",
+        user_prompt_template=(
+            "Sei un assistente specializzato nell'analizzare i documenti caricati dal gestionale. "
+            "Rispondi utilizzando esclusivamente le informazioni fornite nei chunk recuperati. "
+            "Quando non trovi una risposta nelle fonti indicate, comunica chiaramente che l'informazione non è disponibile.\n\n"
+            "Domanda utente: {{ user_prompt }}"
+        ),
         retrieval_prompt_template=(
             "Contenuto recuperato:\n"
             "{% for chunk in chunks %}- {{ chunk.text }}\n{% endfor %}\n"
         ),
-        system_prompt=_DEFAULT_SYSTEM_PROMPT,
     )
 
     pipeline = DagPipeline()

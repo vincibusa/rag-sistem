@@ -29,6 +29,8 @@ class DocumentStatus(enum.Enum):
     FAILED = "failed"
 
 
+
+
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -45,7 +47,7 @@ class Document(Base):
     checksum_sha256: Mapped[str] = mapped_column(String(length=64), nullable=False)
     data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     status: Mapped[DocumentStatus] = mapped_column(
-        Enum(DocumentStatus, name="document_status"),
+        Enum(DocumentStatus, native_enum=False),
         nullable=False,
         default=DocumentStatus.NEW,
     )

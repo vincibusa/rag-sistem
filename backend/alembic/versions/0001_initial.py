@@ -20,11 +20,19 @@ document_status_enum = postgresql.ENUM(
     "ready",
     "failed",
     name="document_status",
+    create_type=False,  # Non creare il tipo automaticamente, l'abbiamo già creato manualmente
 )
 
 
 def upgrade() -> None:
-    document_status_enum.create(op.get_bind(), checkfirst=True)
+    # Crea il tipo ENUM con SQL nativo per evitare conflitti
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE document_status AS ENUM ('new', 'processing', 'ready', 'failed');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
 
     op.create_table(
         "documents",

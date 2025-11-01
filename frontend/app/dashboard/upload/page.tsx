@@ -9,6 +9,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Upload, FileText, X, CheckCircle2, AlertCircle, CloudUpload, FileCheck, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { uploadDocuments, ApiClientError } from '@/lib/api-client'
+import type { DocumentSummary } from '@/lib/types'
 
 interface UploadedFile {
 	id: string
@@ -16,6 +18,7 @@ interface UploadedFile {
 	status: 'uploading' | 'success' | 'error'
 	progress: number
 	error?: string
+	documentId?: string
 }
 
 const ACCEPTED_FILE_TYPES = {
@@ -99,35 +102,66 @@ export default function UploadPage() {
 			setFiles((prev) => [...prev, ...newFiles])
 			setIsUploading(true)
 
-			// Simula upload progress
-			newFiles.forEach((uploadedFile) => {
-				const simulateUpload = () => {
-					setFiles((prev) =>
-						prev.map((f) => {
-							if (f.id === uploadedFile.id) {
-								if (f.progress >= 100) {
-									toast.success(`${uploadedFile.file.name} caricato con successo`)
-									return { ...f, status: 'success' as const, progress: 100 }
-								}
-								return { ...f, progress: f.progress + 10 }
+			// Upload reale con progress tracking
+			const uploadPromises = newFiles.map(async (uploadedFile) => {
+				try {
+					const response = await uploadDocuments(
+						[uploadedFile.file],
+						(progressEvent) => {
+							if (progressEvent.total) {
+								const progress = Math.round(
+									(progressEvent.loaded * 100) / progressEvent.total
+								)
+								setFiles((prev) =>
+									prev.map((f) =>
+										f.id === uploadedFile.id
+											? { ...f, progress: Math.min(progress, 99) }
+											: f
+									)
+								)
 							}
-							return f
-						})
+						}
 					)
 
-					const currentFile = files.find((f) => f.id === uploadedFile.id)
-					if (currentFile && currentFile.progress < 100) {
-						setTimeout(simulateUpload, 200)
-					} else {
-						setIsUploading(false)
+					if (response.documents && response.documents.length > 0) {
+						const document = response.documents[0]
+						setFiles((prev) =>
+							prev.map((f) =>
+								f.id === uploadedFile.id
+									? {
+											...f,
+											status: 'success' as const,
+											progress: 100,
+											documentId: document.id,
+										}
+									: f
+							)
+						)
+						toast.success(`${uploadedFile.file.name} caricato con successo`)
 					}
+				} catch (error) {
+					const errorMessage =
+						error instanceof ApiClientError
+							? error.detail
+							: 'Errore durante il caricamento del file'
+					setFiles((prev) =>
+						prev.map((f) =>
+							f.id === uploadedFile.id
+								? { ...f, status: 'error' as const, error: errorMessage }
+								: f
+						)
+					)
+					toast.error(`Errore caricamento ${uploadedFile.file.name}`, {
+						description: errorMessage,
+					})
 				}
-				simulateUpload()
+			})
+
+			Promise.all(uploadPromises).finally(() => {
+				setIsUploading(false)
 			})
 		}
-
-		// TODO: Implementare upload reale
-	}, [validateFile, files])
+	}, [validateFile])
 
 	const handleDrop = useCallback(
 		(e: React.DragEvent) => {

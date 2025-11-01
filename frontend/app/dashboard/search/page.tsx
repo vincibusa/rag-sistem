@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { toast } from 'sonner'
+import { ragSearch, ApiClientError } from '@/lib/api-client'
 
 interface Message {
 	id: string
@@ -89,62 +90,71 @@ export default function ChatPage() {
 		setIsLoading(true)
 		setStreamingContent('')
 
-		// Simulate streaming response (replace with real API call)
-		const responseText = `Questa è una risposta AI migliorata. La tua domanda era: "${userMessage.content}". 
+		try {
+			const response = await ragSearch({
+				query: content,
+				top_k: 5,
+			})
 
-Il sistema RAG analizzerà i tuoi documenti e fornirà risposte basate sul contesto. Puoi fare domande sui documenti caricati e riceverai risposte accurate con riferimenti ai documenti sorgente.
+			// Build response text with answer and context
+			let responseText = ''
 
-**Caratteristiche avanzate:**
-- 🔍 Ricerca semantica nei documenti
-- 📚 Risposte contestualizzate
-- 🔗 Riferimenti ai documenti sorgente
-- 💡 Suggerimenti intelligenti
+			if (response.answer) {
+				responseText = response.answer
+			} else {
+				responseText = 'Ho trovato alcune informazioni nei tuoi documenti:\n\n'
+			}
 
-**Esempio di codice:**
-\`\`\`python
-def search_documents(query):
-    results = vector_store.search(query)
-    return results
-\`\`\``
+			// Add chunks as context if available
+			if (response.chunks && response.chunks.length > 0) {
+				responseText += '\n\n**Fonti trovate:**\n\n'
+				response.chunks.forEach((chunk, index) => {
+					responseText += `${index + 1}. ${chunk.text.substring(0, 200)}...\n`
+					if (chunk.score !== null && chunk.score !== undefined) {
+						responseText += `   _Rilevanza: ${(chunk.score * 100).toFixed(1)}%_\n\n`
+					}
+				})
+			}
 
-		// Simulate streaming
-		for (let i = 0; i <= responseText.length; i += 3) {
-			await new Promise((resolve) => setTimeout(resolve, 20))
-			setStreamingContent(responseText.slice(0, i))
+			// Simulate streaming for better UX
+			const chars = responseText.split('')
+			let currentText = ''
+			for (let i = 0; i < chars.length; i++) {
+				currentText += chars[i]
+				setStreamingContent(currentText)
+				await new Promise((resolve) => setTimeout(resolve, 10))
+			}
+
+			const assistantMessage: Message = {
+				id: (Date.now() + 1).toString(),
+				role: 'assistant',
+				content: responseText,
+				timestamp: new Date(),
+			}
+
+			setMessages((prev) => [...prev, assistantMessage])
+			setStreamingContent('')
+			setIsLoading(false)
+		} catch (error) {
+			const errorMessage =
+				error instanceof ApiClientError
+					? error.detail
+					: 'Errore durante la ricerca. Riprova più tardi.'
+			toast.error('Errore durante la ricerca', {
+				description: errorMessage,
+			})
+
+			const errorResponse: Message = {
+				id: (Date.now() + 1).toString(),
+				role: 'assistant',
+				content: `Mi dispiace, si è verificato un errore: ${errorMessage}`,
+				timestamp: new Date(),
+			}
+
+			setMessages((prev) => [...prev, errorResponse])
+			setStreamingContent('')
+			setIsLoading(false)
 		}
-
-		const assistantMessage: Message = {
-			id: (Date.now() + 1).toString(),
-			role: 'assistant',
-			content: responseText,
-			timestamp: new Date(),
-		}
-
-		setMessages((prev) => [...prev, assistantMessage])
-		setStreamingContent('')
-		setIsLoading(false)
-
-		// TODO: Replace with real streaming API call
-		// try {
-		//   const response = await fetch('/api/chat/stream', {
-		//     method: 'POST',
-		//     headers: { 'Content-Type': 'application/json' },
-		//     body: JSON.stringify({ message: content }),
-		//   })
-		//   const reader = response.body?.getReader()
-		//   const decoder = new TextDecoder()
-		//   let streamedContent = ''
-		//   while (true) {
-		//     const { done, value } = await reader.read()
-		//     if (done) break
-		//     streamedContent += decoder.decode(value)
-		//     setStreamingContent(streamedContent)
-		//   }
-		// } catch (error) {
-		//   toast.error('Errore durante la ricerca')
-		// } finally {
-		//   setIsLoading(false)
-		// }
 	}
 
 	const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
