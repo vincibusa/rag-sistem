@@ -14,7 +14,38 @@ Stack fullstack per la gestione documentale con RAG.
    ./scripts/dev.sh
    ```
 
+4. **Installa e configura Ollama per gli embeddings:**
+   ```bash
+   # Installazione Ollama (macOS con Homebrew)
+   brew install ollama
+   
+   # Avvia il server Ollama in background
+   ollama serve
+   
+   # Pull del modello per embeddings
+   ./scripts/setup_ollama.sh
+   ```
+
 Lo script `scripts/check_infrastructure.sh` può essere rieseguito in qualsiasi momento per verificare che i servizi siano raggiungibili.
+
+### Troubleshooting Docker
+
+Se incontri errori di I/O con Docker (es: `input/output error` su containerd):
+
+1. **Riavvia Docker Desktop:**
+   ```bash
+   killall Docker && open -a Docker
+   ```
+
+2. **Se il problema persiste, resetta Docker completamente:**
+   - Apri Docker Desktop
+   - Vai su "Troubleshoot" → "Clean / Purge data"
+   - Riavvia Docker Desktop
+
+3. **Verifica che Docker funzioni:**
+   ```bash
+   docker info
+   ```
 
 ## Backend FastAPI
 

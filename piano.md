@@ -81,11 +81,11 @@ Sistema gestionale per aziende con caricamento documenti multi-formato e sistema
   - [x] Prompt engineering per risposte
   - [x] **Generazione risposte con OpenAIClient (gpt-5-mini)**
 
-- [ ] **Task Asincroni Celery**
+- [x] **Task Asincroni Celery**
   - [x] Configurazione Celery con Redis
   - [x] Worker per processing documenti
   - [x] Task per generazione embeddings
-  - [ ] Gestione errori e retry
+  - [x] Gestione errori e retry
 
 - [x] **API Endpoints Completi**
   - [x] `/api/documents/upload` - Upload multi-formato
@@ -94,10 +94,10 @@ Sistema gestionale per aziende con caricamento documenti multi-formato e sistema
   - [x] `/api/search/rag` - Ricerca RAG
   - [x] `/api/search/semantic` - Ricerca semantica
 
-- [ ] **Configurazione Ollama e OpenAI Client**
-  - [ ] Docker container per Ollama (solo per embeddings)
-  - [ ] Pull modello mxbai-embed-large per embeddings
-  - [ ] Configurazione OpenAILikeClient per embeddings DataPizza
+- [x] **Configurazione Ollama e OpenAI Client**
+  - [x] Ollama installato localmente (per embeddings)
+  - [x] Script setup per pull modello mxbai-embed-large
+  - [x] Configurazione OpenAILikeClient per embeddings DataPizza
   - [x] Configurazione OpenAIClient per generazione risposte (gpt-5-mini)
   - [ ] Test embeddings e chat completi
 

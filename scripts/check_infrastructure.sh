@@ -73,4 +73,7 @@ wait_for_postgres
 wait_for_redis
 wait_for_qdrant
 
-echo "All services are reachable."
+echo "All Docker services are reachable."
+echo ""
+echo "Note: Ollama should be running locally on localhost:11434"
+echo "Run: ollama serve (or ensure it's running in the background)"
