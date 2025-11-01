@@ -49,37 +49,37 @@ Sistema gestionale per aziende con caricamento documenti multi-formato e sistema
   - [x] Test basici infrastruttura
 
 ### Fase 2: Backend Core (Settimana 2-3)
-- [ ] **Struttura Backend FastAPI**
-  - [ ] Setup progetto Python con struttura modulare
-  - [ ] Configurazione CORS e middleware
-  - [ ] Sistema di autenticazione base
-  - [ ] Gestione errori e logging
+- [x] **Struttura Backend FastAPI**
+  - [x] Setup progetto Python con struttura modulare
+  - [x] Configurazione CORS e middleware
+  - [x] Sistema di autenticazione base
+  - [x] Gestione errori e logging
 
-- [ ] **Database Schema**
-  - [ ] Creare tabelle PostgreSQL per documenti
-  - [ ] Schema per metadati e file binari
-  - [ ] Relazioni tra documenti e chunks
-  - [ ] Migrazioni database
+- [x] **Database Schema**
+  - [x] Creare tabelle PostgreSQL per documenti
+  - [x] Schema per metadati e file binari
+  - [x] Relazioni tra documenti e chunks
+  - [x] Migrazioni database
 
-- [ ] **Gestione File Originali**
-  - [ ] API per upload file multi-formato
-  - [ ] Storage file binari in PostgreSQL (BYTEA)
-  - [ ] Download file originali
-  - [ ] Validazione formati e sicurezza
+- [x] **Gestione File Originali**
+  - [x] API per upload file multi-formato
+  - [x] Storage file binari in PostgreSQL (BYTEA)
+  - [x] Download file originali
+  - [x] Validazione formati e sicurezza
 
-### Fase 3: DataPizza AI RAG System (Settimana 4-5)
+### Fase 3: DataPizza AI v0.0.7 RAG System con Ollama (Settimana 4-5)
 - [ ] **Pipeline Ingestione Documenti**
-  - [ ] Installazione DataPizza AI e dipendenze
+  - [ ] Installazione DataPizza AI v0.0.7 e dipendenze
   - [ ] Parser per PDF, DOC, DOCX, XLS, XLSX, TXT
   - [ ] Splitter per chunking documenti
-  - [ ] Embedder per generazione vettori
+  - [ ] **Embedder con Ollama (mxbai-embed-large)**
   - [ ] Storage embeddings in Qdrant
 
 - [ ] **Pipeline Retrieval RAG**
   - [ ] Query rewriting per migliorare ricerca
   - [ ] Retrieval da Qdrant
   - [ ] Prompt engineering per risposte
-  - [ ] Generazione risposte con LLM
+  - [ ] **Generazione risposte con OpenAIClient (gpt-5-mini)**
 
 - [ ] **Task Asincroni Celery**
   - [ ] Configurazione Celery con Redis
@@ -93,6 +93,13 @@ Sistema gestionale per aziende con caricamento documenti multi-formato e sistema
   - [ ] `/api/documents/{id}/download` - Download originale
   - [ ] `/api/search/rag` - Ricerca RAG
   - [ ] `/api/search/semantic` - Ricerca semantica
+
+- [ ] **Configurazione Ollama e OpenAI Client**
+  - [ ] Docker container per Ollama (solo per embeddings)
+  - [ ] Pull modello mxbai-embed-large per embeddings
+  - [ ] Configurazione OpenAILikeClient per embeddings DataPizza
+  - [ ] Configurazione OpenAIClient per generazione risposte (gpt-5-mini)
+  - [ ] Test embeddings e chat completi
 
 ### Fase 4: Frontend Next.js Dashboard (Settimana 6-7)
 - [ ] **Dashboard Principale**

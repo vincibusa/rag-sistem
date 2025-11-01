@@ -15,3 +15,35 @@ Stack fullstack per la gestione documentale con RAG.
    ```
 
 Lo script `scripts/check_infrastructure.sh` può essere rieseguito in qualsiasi momento per verificare che i servizi siano raggiungibili.
+
+## Backend FastAPI
+
+### Setup ambiente sviluppo
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```
+
+> Puoi impostare la variabile `API_KEY` nel file `.env` per richiedere un header `X-API-Key` su tutti gli endpoint protetti.
+
+### Migrazioni database
+
+```bash
+alembic -c alembic.ini upgrade head
+```
+
+### Avvio server
+
+```bash
+uvicorn app.main:app --reload
+```
+
+### Endpoints disponibili
+
+- `GET /api/health` – verifica stato applicazione.
+- `POST /api/documents/upload` – upload multiplo con validazione formati.
+- `GET /api/documents/list` – metadati documenti con paginazione.
+- `GET /api/documents/{id}/download` – scarica il file originale.
