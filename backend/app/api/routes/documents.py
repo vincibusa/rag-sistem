@@ -11,6 +11,7 @@ from app.api.deps import get_db_session
 from app.core import exceptions
 from app.schemas.document import DocumentListResponse, DocumentSummary, DocumentUploadResponse
 from app.services.documents import DocumentService, UploadedFileData
+from app.tasks import enqueue_document_processing
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -43,6 +44,9 @@ async def upload_documents(
 
     service = DocumentService(session)
     documents = service.create_documents(uploads)
+
+    for document in documents:
+        enqueue_document_processing(document.id)
 
     return DocumentUploadResponse(
         documents=[DocumentSummary.model_validate(doc) for doc in documents]

@@ -139,6 +139,10 @@ class OllamaQueryEmbedder(PipelineComponent):
                 raise RuntimeError("Ollama non ha restituito alcun embedding per la query.")
             return _extract_vector(data[0])
 
+    def embed_text(self, text: str) -> list[float]:
+        """Utility per generare embedding senza pipeline."""
+        return self._embed_sync(text)
+
 
 def _extract_vector(item: dict) -> list[float]:
     vector: Iterable[float] | None = item.get("embedding") or item.get("vector")

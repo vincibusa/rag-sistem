@@ -18,7 +18,13 @@ from app.core.exceptions import AppException
 from app.core.logging import logger
 from app.models import Document, DocumentChunk, DocumentStatus
 
-from ..rag import create_ingestion_pipeline, create_retrieval_pipeline, ensure_collection, get_vectorstore
+from ..rag import (
+    create_ingestion_pipeline,
+    create_retrieval_pipeline,
+    ensure_collection,
+    get_vectorstore,
+)
+from ..rag.components import OllamaQueryEmbedder
 
 
 class DocumentProcessingService:
@@ -145,6 +151,16 @@ class DocumentProcessingService:
     def _enrich_chunks(self, chunks: Iterable[Chunk], document: Document) -> list[Chunk]:
         enriched: list[Chunk] = []
         for index, chunk in enumerate(chunks):
+            embeddings = getattr(chunk, "embeddings", []) or []
+            if not embeddings:
+                raise RuntimeError(
+                    "Il chunk generato non contiene embedding; verifica l'integrazione con Ollama."
+                )
+            vector = getattr(embeddings[0], "vector", None)
+            if vector is None or len(vector) != settings.rag_embedding_dimensions:
+                raise RuntimeError(
+                    "Dimensione embedding inattesa per il chunk elaborato dal documento."
+                )
             if not getattr(chunk, "id", None):
                 chunk.id = str(uuid.uuid4())
             metadata = dict(getattr(chunk, "metadata", {}) or {})
@@ -204,6 +220,7 @@ class RagRetrievalService:
     def __init__(self) -> None:
         ensure_collection()
         self.vectorstore = get_vectorstore()
+        self._query_embedder = OllamaQueryEmbedder()
 
     def run(self, query: str, *, top_k: int | None = None) -> dict[str, Any]:
         pipeline = create_retrieval_pipeline()
@@ -252,6 +269,15 @@ class RagRetrievalService:
         if is_dataclass(metadata):
             return asdict(metadata)
         return {"value": str(metadata)}
+
+    def semantic_search(self, query: str, *, top_k: int | None = None) -> list[Chunk]:
+        vector = self._query_embedder.embed_text(query)
+        results = self.vectorstore.search(
+            collection_name=settings.qdrant_collection_name,
+            query_vector=vector,
+            k=top_k or settings.rag_top_k,
+        )
+        return list(results)
 
 
 def _extract_text(value: Any) -> str | None:
