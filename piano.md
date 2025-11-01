@@ -68,37 +68,37 @@ Sistema gestionale per aziende con caricamento documenti multi-formato e sistema
   - [x] Validazione formati e sicurezza
 
 ### Fase 3: DataPizza AI v0.0.7 RAG System con Ollama (Settimana 4-5)
-- [ ] **Pipeline Ingestione Documenti**
-  - [ ] Installazione DataPizza AI v0.0.7 e dipendenze
-  - [ ] Parser per PDF, DOC, DOCX, XLS, XLSX, TXT
-  - [ ] Splitter per chunking documenti
-  - [ ] **Embedder con Ollama (mxbai-embed-large)**
-  - [ ] Storage embeddings in Qdrant
+- [x] **Pipeline Ingestione Documenti**
+  - [x] Installazione DataPizza AI v0.0.7 e dipendenze
+  - [x] Parser per PDF, DOC, DOCX, XLS, XLSX, TXT
+  - [x] Splitter per chunking documenti
+  - [x] **Embedder con Ollama (mxbai-embed-large)**
+  - [x] Storage embeddings in Qdrant
 
-- [ ] **Pipeline Retrieval RAG**
-  - [ ] Query rewriting per migliorare ricerca
-  - [ ] Retrieval da Qdrant
-  - [ ] Prompt engineering per risposte
-  - [ ] **Generazione risposte con OpenAIClient (gpt-5-mini)**
+- [x] **Pipeline Retrieval RAG**
+  - [x] Query rewriting per migliorare ricerca
+  - [x] Retrieval da Qdrant
+  - [x] Prompt engineering per risposte
+  - [x] **Generazione risposte con OpenAIClient (gpt-5-mini)**
 
 - [ ] **Task Asincroni Celery**
-  - [ ] Configurazione Celery con Redis
-  - [ ] Worker per processing documenti
-  - [ ] Task per generazione embeddings
+  - [x] Configurazione Celery con Redis
+  - [x] Worker per processing documenti
+  - [x] Task per generazione embeddings
   - [ ] Gestione errori e retry
 
-- [ ] **API Endpoints Completi**
-  - [ ] `/api/documents/upload` - Upload multi-formato
-  - [ ] `/api/documents/list` - Lista documenti
-  - [ ] `/api/documents/{id}/download` - Download originale
-  - [ ] `/api/search/rag` - Ricerca RAG
-  - [ ] `/api/search/semantic` - Ricerca semantica
+- [x] **API Endpoints Completi**
+  - [x] `/api/documents/upload` - Upload multi-formato
+  - [x] `/api/documents/list` - Lista documenti
+  - [x] `/api/documents/{id}/download` - Download originale
+  - [x] `/api/search/rag` - Ricerca RAG
+  - [x] `/api/search/semantic` - Ricerca semantica
 
 - [ ] **Configurazione Ollama e OpenAI Client**
   - [ ] Docker container per Ollama (solo per embeddings)
   - [ ] Pull modello mxbai-embed-large per embeddings
   - [ ] Configurazione OpenAILikeClient per embeddings DataPizza
-  - [ ] Configurazione OpenAIClient per generazione risposte (gpt-5-mini)
+  - [x] Configurazione OpenAIClient per generazione risposte (gpt-5-mini)
   - [ ] Test embeddings e chat completi
 
 ### Fase 4: Frontend Next.js Dashboard (Settimana 6-7)

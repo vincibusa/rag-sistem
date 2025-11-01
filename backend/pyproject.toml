@@ -3,7 +3,6 @@ name = "medit-rag-backend"
 version = "0.1.0"
 description = "Backend FastAPI per il gestionale RAG."
 authors = [{ name = "Medit Team" }]
-readme = "../README.md"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.111,<0.112",
