@@ -1,0 +1,24 @@
+{
+    "mcpServers": {
+
+      "shadcn": {
+        "command": "npx",
+        "args": ["shadcn@latest", "mcp"]
+      },
+
+      "firecrawl-mcp": {
+        "command": "npx",
+        "args": ["-y", "firecrawl-mcp"],
+        "env": {
+          "FIRECRAWL_API_KEY": "fc-cc56326a06c442e8aded2eac7a6e657d"
+        }
+      },
+
+      "chrome-devtools": {
+        "command": "npx",
+        "args": ["-y", "chrome-devtools-mcp@latest"]
+      }
+ 
+     
+    }
+  }
