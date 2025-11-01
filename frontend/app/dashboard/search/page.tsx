@@ -47,11 +47,9 @@ export default function ChatPage() {
 		if (scrollAreaRef.current) {
 			const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]')
 			if (scrollContainer) {
-				requestAnimationFrame(() => {
-					scrollContainer.scrollTo({
-						top: scrollContainer.scrollHeight,
-						behavior: 'smooth',
-					})
+				scrollContainer.scrollTo({
+					top: scrollContainer.scrollHeight,
+					behavior: 'auto',
 				})
 			}
 		}
@@ -210,22 +208,19 @@ def search_documents(query):
 						{messages.length === 0 ? (
 							<div className="flex flex-col items-center justify-center min-h-[400px] text-center px-4">
 								<div className="relative mb-6">
-									<div className="rounded-full bg-primary/10 p-5 animate-in fade-in zoom-in duration-500">
+									<div className="rounded-full bg-primary/10 p-5">
 										<MessageSquare className="h-10 w-10 text-primary" />
 									</div>
-									<div className="absolute -top-1 -right-1">
-										<div className="h-3 w-3 bg-primary rounded-full animate-pulse" />
-									</div>
 								</div>
-								<h3 className="text-xl font-semibold mb-2 animate-in fade-in slide-in-from-bottom-4 duration-700">
+								<h3 className="text-xl font-semibold mb-2">
 									Inizia una conversazione
 								</h3>
-								<p className="text-sm text-muted-foreground max-w-md mb-6 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-100">
+								<p className="text-sm text-muted-foreground max-w-md mb-6">
 									Fai domande sui tuoi documenti caricati. Il sistema RAG ti fornirà
 									risposte basate sul contesto dei documenti.
 								</p>
 								{/* Suggested Questions */}
-								<div className="w-full max-w-md space-y-2 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-200">
+								<div className="w-full max-w-md space-y-2">
 									<p className="text-xs text-muted-foreground font-medium mb-2">
 										Suggerimenti:
 									</p>
@@ -233,7 +228,7 @@ def search_documents(query):
 										<Button
 											key={index}
 											variant="outline"
-											className="w-full text-left justify-start text-sm h-auto py-2.5 px-3 hover:bg-accent/50 transition-colors"
+											className="w-full text-left justify-start text-sm h-auto py-2.5 px-3"
 											onClick={() => handleSuggestionClick(question)}
 										>
 											<span className="truncate">{question}</span>
@@ -242,14 +237,13 @@ def search_documents(query):
 								</div>
 							</div>
 						) : (
-							messages.map((message, index) => (
+							messages.map((message) => (
 								<div
 									key={message.id}
 									className={cn(
-										'flex gap-3 sm:gap-4 group animate-in fade-in slide-in-from-bottom-2 duration-300',
+										'flex gap-3 sm:gap-4 group',
 										message.role === 'user' ? 'justify-end' : 'justify-start'
 									)}
-									style={{ animationDelay: `${index * 50}ms` }}
 								>
 									{message.role === 'assistant' && (
 										<Avatar className="h-8 w-8 sm:h-9 sm:w-9 flex-shrink-0 mt-1 ring-2 ring-primary/10">
@@ -267,10 +261,10 @@ def search_documents(query):
 									>
 										<div
 											className={cn(
-												'rounded-2xl px-4 py-3 text-sm leading-relaxed break-words shadow-sm transition-all duration-200',
+												'rounded-2xl px-4 py-3 text-sm leading-relaxed break-words shadow-sm',
 												message.role === 'user'
 													? 'bg-primary text-primary-foreground shadow-primary/20'
-													: 'bg-muted text-foreground hover:shadow-md'
+													: 'bg-muted text-foreground'
 											)}
 										>
 											{message.role === 'user' ? (
@@ -285,7 +279,7 @@ def search_documents(query):
 										</div>
 
 										{message.role === 'assistant' && (
-											<div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+											<div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
 												<Button
 													variant="ghost"
 													size="icon"
@@ -345,7 +339,7 @@ def search_documents(query):
 
 						{/* Streaming message */}
 						{isLoading && streamingContent && (
-							<div className="flex gap-3 sm:gap-4 justify-start animate-in fade-in">
+							<div className="flex gap-3 sm:gap-4 justify-start">
 								<Avatar className="h-8 w-8 sm:h-9 sm:w-9 flex-shrink-0 mt-1 ring-2 ring-primary/10">
 									<AvatarFallback className="bg-primary/10 text-primary">
 										<Bot className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -357,13 +351,6 @@ def search_documents(query):
 											<ReactMarkdown remarkPlugins={[remarkGfm]}>
 												{streamingContent}
 											</ReactMarkdown>
-										</div>
-										<div className="flex items-center gap-1 mt-2 pt-2 border-t border-border/50">
-											<div className="flex gap-1">
-												<div className="h-1.5 w-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-												<div className="h-1.5 w-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-												<div className="h-1.5 w-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-											</div>
 										</div>
 									</div>
 								</div>
@@ -404,7 +391,7 @@ def search_documents(query):
 									onChange={(e) => setInput(e.target.value)}
 									onKeyDown={handleKeyDown}
 									disabled={isLoading}
-									className="min-h-[52px] max-h-[200px] resize-none pr-12 sm:pr-14 shadow-sm focus:shadow-md transition-shadow"
+									className="min-h-[52px] max-h-[200px] resize-none pr-12 sm:pr-14"
 									rows={1}
 									aria-label="Input messaggio"
 								/>
@@ -418,7 +405,7 @@ def search_documents(query):
 								onClick={() => handleSend()}
 								disabled={!input.trim() || isLoading}
 								size="icon"
-								className="h-[52px] w-[52px] flex-shrink-0 shadow-sm hover:shadow-md transition-all disabled:opacity-50"
+								className="h-[52px] w-[52px] flex-shrink-0 disabled:opacity-50"
 								aria-label="Invia messaggio"
 							>
 								{isLoading ? (

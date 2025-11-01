@@ -1,12 +1,14 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Upload, FileText, X, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Upload, FileText, X, CheckCircle2, AlertCircle, CloudUpload, FileCheck, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
 
 interface UploadedFile {
 	id: string
@@ -45,9 +47,16 @@ function getFileType(file: File): string {
 	}
 }
 
+function getFileIcon(file: File): string {
+	const ext = file.name.split('.').pop()?.toLowerCase()
+	return ext || 'file'
+}
+
 export default function UploadPage() {
 	const [files, setFiles] = useState<UploadedFile[]>([])
 	const [isDragging, setIsDragging] = useState(false)
+	const [isUploading, setIsUploading] = useState(false)
+	const fileInputRef = useRef<HTMLInputElement>(null)
 
 	const validateFile = useCallback((file: File): string | null => {
 		if (!Object.keys(ACCEPTED_FILE_TYPES).includes(file.type) && 
@@ -63,53 +72,62 @@ export default function UploadPage() {
 	const handleFiles = useCallback((fileList: FileList | null) => {
 		if (!fileList) return
 
-		const newFiles: UploadedFile[] = Array.from(fileList)
-			.filter((file) => {
-				const error = validateFile(file)
-				if (error) {
-					// TODO: Mostrare toast di errore
-					console.error(error)
-					return false
-				}
-				return true
-			})
-			.map((file) => ({
+		const newFiles: UploadedFile[] = []
+		const errors: string[] = []
+
+		Array.from(fileList).forEach((file) => {
+			const error = validateFile(file)
+			if (error) {
+				errors.push(`${file.name}: ${error}`)
+				return
+			}
+			newFiles.push({
 				id: `${Date.now()}-${Math.random()}`,
 				file,
 				status: 'uploading' as const,
 				progress: 0,
-			}))
-
-		setFiles((prev) => [...prev, ...newFiles])
-
-		// Simula upload progress
-		newFiles.forEach((uploadedFile) => {
-			const simulateUpload = () => {
-				setFiles((prev) =>
-					prev.map((f) => {
-						if (f.id === uploadedFile.id) {
-							if (f.progress >= 100) {
-								return { ...f, status: 'success' as const, progress: 100 }
-							}
-							return { ...f, progress: f.progress + 10 }
-						}
-						return f
-					})
-				)
-
-				const currentFile = newFiles.find((f) => f.id === uploadedFile.id)
-				if (currentFile && currentFile.progress < 100) {
-					setTimeout(simulateUpload, 200)
-				}
-			}
-			simulateUpload()
+			})
 		})
 
+		if (errors.length > 0) {
+			toast.error(`${errors.length} file non validi`, {
+				description: errors.slice(0, 3).join(', '),
+			})
+		}
+
+		if (newFiles.length > 0) {
+			setFiles((prev) => [...prev, ...newFiles])
+			setIsUploading(true)
+
+			// Simula upload progress
+			newFiles.forEach((uploadedFile) => {
+				const simulateUpload = () => {
+					setFiles((prev) =>
+						prev.map((f) => {
+							if (f.id === uploadedFile.id) {
+								if (f.progress >= 100) {
+									toast.success(`${uploadedFile.file.name} caricato con successo`)
+									return { ...f, status: 'success' as const, progress: 100 }
+								}
+								return { ...f, progress: f.progress + 10 }
+							}
+							return f
+						})
+					)
+
+					const currentFile = files.find((f) => f.id === uploadedFile.id)
+					if (currentFile && currentFile.progress < 100) {
+						setTimeout(simulateUpload, 200)
+					} else {
+						setIsUploading(false)
+					}
+				}
+				simulateUpload()
+			})
+		}
+
 		// TODO: Implementare upload reale
-		// for (const uploadedFile of newFiles) {
-		//   await uploadFile(uploadedFile.file)
-		// }
-	}, [validateFile])
+	}, [validateFile, files])
 
 	const handleDrop = useCallback(
 		(e: React.DragEvent) => {
@@ -133,12 +151,26 @@ export default function UploadPage() {
 	const handleFileInput = useCallback(
 		(e: React.ChangeEvent<HTMLInputElement>) => {
 			handleFiles(e.target.files)
+			if (fileInputRef.current) {
+				fileInputRef.current.value = ''
+			}
 		},
 		[handleFiles]
 	)
 
 	const removeFile = useCallback((id: string) => {
-		setFiles((prev) => prev.filter((f) => f.id !== id))
+		setFiles((prev) => {
+			const file = prev.find((f) => f.id === id)
+			if (file) {
+				toast.info('File rimosso')
+			}
+			return prev.filter((f) => f.id !== id)
+		})
+	}, [])
+
+	const clearAll = useCallback(() => {
+		setFiles([])
+		toast.info('Lista file cancellata')
 	}, [])
 
 	const completedCount = files.filter((f) => f.status === 'success').length
@@ -148,7 +180,10 @@ export default function UploadPage() {
 	return (
 		<div className="space-y-4 md:space-y-6">
 			<div>
-				<h2 className="text-2xl md:text-3xl font-bold tracking-tight">Upload Documenti</h2>
+				<h2 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center gap-2">
+					<Sparkles className="h-6 w-6 text-primary" />
+					Upload Documenti
+				</h2>
 				<p className="text-sm md:text-base text-muted-foreground mt-1">
 					Carica documenti in formato PDF, DOC, DOCX, XLS, XLSX, TXT
 				</p>
@@ -156,7 +191,10 @@ export default function UploadPage() {
 
 			<Card>
 				<CardHeader>
-					<CardTitle>Carica Documenti</CardTitle>
+					<CardTitle className="flex items-center gap-2">
+						<CloudUpload className="h-5 w-5 text-primary" />
+						Carica Documenti
+					</CardTitle>
 					<CardDescription>
 						Trascina i file qui o clicca per selezionare
 					</CardDescription>
@@ -167,59 +205,104 @@ export default function UploadPage() {
 						onDragOver={handleDragOver}
 						onDragLeave={handleDragLeave}
 						className={cn(
-							'border-2 border-dashed rounded-lg p-6 md:p-12 text-center transition-colors',
+							'border-2 border-dashed rounded-xl p-6 md:p-12 text-center cursor-pointer',
 							isDragging
 								? 'border-primary bg-primary/5'
-								: 'border-muted-foreground/25 hover:border-primary/50'
+								: 'border-muted-foreground/25'
 						)}
+						onClick={() => fileInputRef.current?.click()}
+						role="button"
+						tabIndex={0}
+						onKeyDown={(e) => {
+							if (e.key === 'Enter' || e.key === ' ') {
+								fileInputRef.current?.click()
+							}
+						}}
+						aria-label="Area upload file"
 					>
-						<Upload className="h-8 w-8 md:h-12 md:w-12 mx-auto mb-4 text-muted-foreground" />
-						<p className="text-sm md:text-base font-medium mb-2">
-							Trascina i file qui o
-						</p>
-						<Button
-							onClick={() => document.getElementById('file-input')?.click()}
-							variant="outline"
-							size="sm"
-							className="mb-2"
-						>
-							Sfoglia
-						</Button>
-						<p className="text-xs md:text-sm text-muted-foreground">
-							Massimo {MAX_FILE_SIZE / 1024 / 1024}MB per file
-						</p>
+						<div className="flex flex-col items-center gap-4">
+							<div className={cn(
+								'rounded-full p-4',
+								isDragging ? 'bg-primary/20' : 'bg-primary/10'
+							)}>
+								<Upload className={cn(
+									'h-8 w-8 md:h-12 md:w-12 mx-auto',
+									isDragging ? 'text-primary' : 'text-muted-foreground'
+								)} />
+							</div>
+							<div>
+								<p className="text-sm md:text-base font-medium mb-2">
+									Trascina i file qui o <span className="text-primary font-semibold">clicca per selezionare</span>
+								</p>
+								<p className="text-xs md:text-sm text-muted-foreground">
+									Massimo {MAX_FILE_SIZE / 1024 / 1024}MB per file • Supportati: PDF, DOC, DOCX, XLS, XLSX, TXT
+								</p>
+							</div>
+						</div>
 						<input
-							id="file-input"
+							ref={fileInputRef}
 							type="file"
 							multiple
 							accept=".pdf,.doc,.docx,.xls,.xlsx,.txt"
 							onChange={handleFileInput}
 							className="hidden"
+							aria-label="Seleziona file"
 						/>
 					</div>
 				</CardContent>
 			</Card>
 
-			{(files.length > 0 || completedCount > 0) && (
+			{files.length > 0 && (
 				<Card>
 					<CardHeader>
-						<CardTitle>File Caricati</CardTitle>
-						<CardDescription>
-							{completedCount} completati, {uploadingCount} in corso, {errorCount} errori
-						</CardDescription>
+						<div className="flex items-center justify-between">
+							<div>
+								<CardTitle className="flex items-center gap-2">
+									<FileCheck className="h-5 w-5 text-primary" />
+									File Caricati
+								</CardTitle>
+								<CardDescription className="mt-1">
+									{completedCount} completati
+									{uploadingCount > 0 && ` • ${uploadingCount} in corso`}
+									{errorCount > 0 && ` • ${errorCount} errori`}
+								</CardDescription>
+							</div>
+							{files.length > 0 && (
+								<Button
+									variant="ghost"
+									size="sm"
+									onClick={clearAll}
+									className="text-xs"
+								>
+									Pulisci tutto
+								</Button>
+							)}
+						</div>
 					</CardHeader>
 					<CardContent className="space-y-3">
 						{files.map((file) => (
 							<div
 								key={file.id}
-								className="flex flex-col gap-2 p-3 border rounded-lg bg-card"
+								className={cn(
+									'flex flex-col gap-2 p-4 border rounded-xl bg-card',
+									file.status === 'success' && 'border-green-500/20 bg-green-500/5',
+									file.status === 'error' && 'border-destructive/20 bg-destructive/5'
+								)}
 							>
 								<div className="flex items-start gap-3">
-									<FileText className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
+									<div className={cn(
+										'p-2 rounded-lg flex-shrink-0',
+										file.status === 'success' ? 'bg-green-500/10' : file.status === 'error' ? 'bg-destructive/10' : 'bg-muted'
+									)}>
+										<FileText className={cn(
+											'h-5 w-5',
+											file.status === 'success' ? 'text-green-600' : file.status === 'error' ? 'text-destructive' : 'text-muted-foreground'
+										)} />
+									</div>
 									<div className="flex-1 min-w-0">
 										<p className="text-sm font-medium truncate">{file.file.name}</p>
 										<div className="flex items-center gap-2 mt-1">
-											<span className="text-xs text-muted-foreground">
+											<span className="text-xs text-muted-foreground font-medium px-2 py-0.5 rounded-md bg-muted">
 												{getFileType(file.file)}
 											</span>
 											<span className="text-xs text-muted-foreground">•</span>
@@ -240,7 +323,8 @@ export default function UploadPage() {
 												variant="ghost"
 												size="icon"
 												onClick={() => removeFile(file.id)}
-												className="h-8 w-8"
+												className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive"
+												aria-label="Rimuovi file"
 											>
 												<X className="h-4 w-4" />
 											</Button>
@@ -249,19 +333,19 @@ export default function UploadPage() {
 								</div>
 
 								{file.status === 'uploading' && (
-									<div className="space-y-1">
+									<div className="space-y-2">
 										<Progress value={file.progress} className="h-2" />
-										<p className="text-xs text-muted-foreground text-right">
-											{file.progress}%
-										</p>
+										<div className="flex items-center justify-between text-xs text-muted-foreground">
+											<span>Caricamento in corso...</span>
+											<span className="font-medium">{file.progress}%</span>
+										</div>
 									</div>
 								)}
 
 								{file.status === 'error' && file.error && (
-									<Alert variant="destructive" className="py-2">
-										<AlertDescription className="text-xs">
-											{file.error}
-										</AlertDescription>
+									<Alert variant="destructive">
+										<AlertCircle className="h-4 w-4" />
+										<AlertDescription className="text-xs">{file.error}</AlertDescription>
 									</Alert>
 								)}
 							</div>

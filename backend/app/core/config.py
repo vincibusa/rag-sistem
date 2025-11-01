@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     rag_chunk_overlap: int = Field(default=100, alias="RAG_CHUNK_OVERLAP")
     rag_top_k: int = Field(default=5, alias="RAG_TOP_K")
     rag_embedding_dimensions: int = Field(default=1024, alias="RAG_EMBED_DIMENSIONS")
+    rag_embedding_name: str = Field(default="default", alias="RAG_EMBED_NAME")
 
     celery_queue_name: str = Field(
         default="documents", alias="CELERY_QUEUE_NAME"

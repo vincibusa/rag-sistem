@@ -102,29 +102,29 @@ Sistema gestionale per aziende con caricamento documenti multi-formato e sistema
   - [ ] Test embeddings e chat completi
 
 ### Fase 4: Frontend Next.js Dashboard (Settimana 6-7)
-- [ ] **Dashboard Principale**
-  - [ ] Layout con sidebar e header
-  - [ ] Statistiche documenti caricati
-  - [ ] Overview sistema RAG
-  - [ ] Gestione utenti base
+- [x] **Dashboard Principale**
+  - [x] Layout con sidebar e header
+  - [x] Statistiche documenti caricati
+  - [x] Overview sistema RAG
+  - [x] Gestione utenti base
 
-- [ ] **Upload Multi-Formato**
-  - [ ] Componente drag & drop
-  - [ ] Supporto PDF, DOC, DOCX, XLS, XLSX, TXT
-  - [ ] Progress tracking upload
-  - [ ] Gestione errori e successi
+- [x] **Upload Multi-Formato**
+  - [x] Componente drag & drop
+  - [x] Supporto PDF, DOC, DOCX, XLS, XLSX, TXT
+  - [x] Progress tracking upload
+  - [x] Gestione errori e successi
 
-- [ ] **Visualizzazione Documenti**
-  - [ ] Lista documenti con metadati
-  - [ ] Visualizzazione PDF integrata
-  - [ ] Download documenti originali
-  - [ ] Gestione stati documenti
+- [x] **Visualizzazione Documenti**
+  - [x] Lista documenti con metadati
+  - [x] Visualizzazione PDF integrata
+  - [x] Download documenti originali
+  - [x] Gestione stati documenti
 
-- [ ] **Interfaccia Ricerca RAG**
-  - [ ] Barra ricerca intelligente
-  - [ ] Risultati con evidenziazione
-  - [ ] Filtri e ordinamento
-  - [ ] Visualizzazione contesto
+- [x] **Interfaccia Ricerca RAG**
+  - [x] Barra ricerca intelligente
+  - [x] Risultati con evidenziazione
+  - [x] Filtri e ordinamento
+  - [x] Visualizzazione contesto
 
 ### Fase 5: Integrazione e Testing (Settimana 8)
 - [ ] **Integrazione Completa**
