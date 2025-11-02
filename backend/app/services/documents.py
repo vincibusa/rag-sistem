@@ -3,8 +3,11 @@ from __future__ import annotations
 import hashlib
 import uuid
 from dataclasses import dataclass
+from io import BytesIO
+import mimetypes
 from pathlib import Path
 from typing import Iterable
+import zipfile
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -56,22 +59,24 @@ class DocumentService:
 
         for file in files:
             filename = self._validate_filename(file.filename)
+            extension = Path(filename).suffix.lower().lstrip(".")
+
+            if extension == "zip":
+                documents.extend(self._create_documents_from_zip(file, filename))
+                continue
+
             self._validate_extension(filename)
             self._validate_size(len(file.data))
 
-            checksum = hashlib.sha256(file.data).hexdigest()
-
-            document = Document(
+            document = self._create_document_record(
                 filename=filename,
                 content_type=file.content_type or "application/octet-stream",
-                size_bytes=len(file.data),
-                checksum_sha256=checksum,
                 data=file.data,
-                status=DocumentStatus.NEW,
-                extra_metadata={"source": "upload", "original_filename": filename},
+                extra_metadata={
+                    "source": "upload",
+                    "original_filename": filename,
+                },
             )
-
-            self.session.add(document)
             documents.append(document)
 
         self.session.commit()
@@ -137,3 +142,99 @@ class DocumentService:
         self.session.commit()
         self.session.refresh(document)
         return document
+
+    def _create_document_record(
+        self,
+        *,
+        filename: str,
+        content_type: str,
+        data: bytes,
+        extra_metadata: dict[str, str] | None = None,
+    ) -> Document:
+        checksum = hashlib.sha256(data).hexdigest()
+
+        document = Document(
+            filename=filename,
+            content_type=content_type,
+            size_bytes=len(data),
+            checksum_sha256=checksum,
+            data=data,
+            status=DocumentStatus.NEW,
+            extra_metadata=extra_metadata,
+        )
+
+        self.session.add(document)
+        return document
+
+    def _create_documents_from_zip(
+        self, file: UploadedFileData, archive_name: str
+    ) -> list[Document]:
+        documents: list[Document] = []
+
+        try:
+            archive = zipfile.ZipFile(BytesIO(file.data))
+        except zipfile.BadZipFile as exc:  # pragma: no cover - defensive guard
+            raise exceptions.AppException(
+                "Archivio zip non valido o corrotto.", status_code=400
+            ) from exc
+
+        with archive:
+            members = [info for info in archive.infolist() if not info.is_dir()]
+            if not members:
+                raise exceptions.AppException(
+                    "L'archivio zip non contiene file supportati.", status_code=400
+                )
+
+            archive_stem = Path(archive_name).stem
+
+            for member in members:
+                inner_path = Path(member.filename)
+                if any(part.startswith("__MACOSX") for part in inner_path.parts):
+                    continue
+                if inner_path.name.startswith("."):
+                    continue
+                extension = inner_path.suffix.lower().lstrip(".")
+                if extension not in settings.allowed_file_extensions:
+                    logger.debug(
+                        "Ignoro il file %s nell'archivio %s: estensione non supportata",  # pragma: no cover - informational
+                        member.filename,
+                        archive_name,
+                    )
+                    continue
+
+                data = archive.read(member)
+                if not data:
+                    continue
+
+                self._validate_size(len(data))
+
+                relative_name = f"{archive_stem}/{member.filename}".strip()
+                filename = self._validate_filename(relative_name)
+                content_type = (
+                    mimetypes.guess_type(inner_path.name)[0]
+                    or file.content_type
+                    or "application/octet-stream"
+                )
+
+                extra_metadata = {
+                    "source": "upload",
+                    "original_filename": inner_path.name,
+                    "archive_name": archive_name,
+                    "archive_path": str(inner_path),
+                }
+
+                document = self._create_document_record(
+                    filename=filename,
+                    content_type=content_type,
+                    data=data,
+                    extra_metadata=extra_metadata,
+                )
+                documents.append(document)
+
+        if not documents:
+            raise exceptions.AppException(
+                "Nessun file con estensione supportata trovato nell'archivio.",
+                status_code=415,
+            )
+
+        return documents

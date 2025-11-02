@@ -69,10 +69,12 @@ class Settings(BaseSettings):
         default="documents", alias="CELERY_QUEUE_NAME"
     )
 
+    libreoffice_binary: str | None = Field(default=None, alias="LIBREOFFICE_BINARY")
+
     sqlalchemy_pool_size: int = Field(default=10, alias="SQLALCHEMY_POOL_SIZE")
     sqlalchemy_max_overflow: int = Field(default=10, alias="SQLALCHEMY_MAX_OVERFLOW")
 
-    max_upload_size_mb: int = Field(default=25, alias="MAX_UPLOAD_SIZE_MB")
+    max_upload_size_mb: int = Field(default=500, alias="MAX_UPLOAD_SIZE_MB")
     allowed_file_extensions: List[str] = Field(
         default_factory=lambda: ["pdf", "doc", "docx", "xls", "xlsx", "txt"],
         alias="ALLOWED_FILE_EXTENSIONS",

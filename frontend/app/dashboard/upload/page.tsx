@@ -28,9 +28,11 @@ const ACCEPTED_FILE_TYPES = {
 	'application/vnd.ms-excel': ['.xls'],
 	'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
 	'text/plain': ['.txt'],
+	'application/zip': ['.zip'],
+	'application/x-zip-compressed': ['.zip'],
 }
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
+const MAX_FILE_SIZE = 500 * 1024 * 1024 // 500MB
 
 function getFileType(file: File): string {
 	const ext = file.name.split('.').pop()?.toLowerCase()
@@ -43,11 +45,13 @@ function getFileType(file: File): string {
 		case 'xls':
 		case 'xlsx':
 			return 'Excel'
-		case 'txt':
-			return 'Text'
-		default:
-			return 'Unknown'
-	}
+	case 'txt':
+		return 'Text'
+	case 'zip':
+		return 'Archivio'
+	default:
+		return 'Unknown'
+}
 }
 
 function getFileIcon(file: File): string {
@@ -62,9 +66,9 @@ export default function UploadPage() {
 	const fileInputRef = useRef<HTMLInputElement>(null)
 
 	const validateFile = useCallback((file: File): string | null => {
-		if (!Object.keys(ACCEPTED_FILE_TYPES).includes(file.type) && 
-				!file.name.match(/\.(pdf|doc|docx|xls|xlsx|txt)$/i)) {
-			return 'Formato file non supportato. Supportati: PDF, DOC, DOCX, XLS, XLSX, TXT'
+	if (!Object.keys(ACCEPTED_FILE_TYPES).includes(file.type) && 
+			!file.name.match(/\.(pdf|doc|docx|xls|xlsx|txt|zip)$/i)) {
+		return 'Formato file non supportato. Supportati: PDF, DOC, DOCX, XLS, XLSX, TXT, ZIP'
 		}
 		if (file.size > MAX_FILE_SIZE) {
 			return `File troppo grande. Dimensione massima: ${MAX_FILE_SIZE / 1024 / 1024}MB`
@@ -268,8 +272,8 @@ export default function UploadPage() {
 								<p className="text-sm md:text-base font-medium mb-2">
 									Trascina i file qui o <span className="text-primary font-semibold">clicca per selezionare</span>
 								</p>
-								<p className="text-xs md:text-sm text-muted-foreground">
-									Massimo {MAX_FILE_SIZE / 1024 / 1024}MB per file • Supportati: PDF, DOC, DOCX, XLS, XLSX, TXT
+				<p className="text-xs md:text-sm text-muted-foreground">
+					Massimo {MAX_FILE_SIZE / 1024 / 1024}MB per file (≈500MB) • Supportati: PDF, DOC, DOCX, XLS, XLSX, TXT, ZIP
 								</p>
 							</div>
 						</div>
@@ -277,7 +281,7 @@ export default function UploadPage() {
 							ref={fileInputRef}
 							type="file"
 							multiple
-							accept=".pdf,.doc,.docx,.xls,.xlsx,.txt"
+			accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
 							onChange={handleFileInput}
 							className="hidden"
 							aria-label="Seleziona file"

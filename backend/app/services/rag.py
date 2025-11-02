@@ -7,6 +7,7 @@ from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
+import subprocess
 
 import xlrd
 from datapizza.type import Chunk
@@ -109,20 +110,82 @@ class DocumentProcessingService:
         if extension not in self.SUPPORTED_EXTENSIONS:
             raise AppException(f"Formato {extension} non supportato per l'ingestione.")
 
-        target_path = base_dir / document.filename
+        relative_path = Path(document.filename)
+        if relative_path.is_absolute() or any(part == ".." for part in relative_path.parts):
+            raise AppException("Percorso documento non valido nell'archivio caricato.")
+
+        target_path = base_dir / relative_path
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if extension == "doc":
+            target_path.write_bytes(document.data)
+            converted_path = self._convert_doc_to_docx(target_path)
+            return converted_path, "docling"
 
         if extension in {"xls", "xlsx"}:
             text = self._extract_spreadsheet_text(document.data, extension)
             target_path = target_path.with_suffix(".txt")
+            target_path.parent.mkdir(parents=True, exist_ok=True)
             target_path.write_text(text, encoding="utf-8")
             return target_path, "text"
 
         if extension == "txt":
+            target_path.parent.mkdir(parents=True, exist_ok=True)
             target_path.write_bytes(document.data)
             return target_path, "text"
 
         target_path.write_bytes(document.data)
         return target_path, "docling"
+
+    def _convert_doc_to_docx(self, source_path: Path) -> Path:
+        binary = settings.libreoffice_binary or "soffice"
+        output_dir = source_path.parent
+
+        try:
+            result = subprocess.run(
+                [
+                    binary,
+                    "--headless",
+                    "--convert-to",
+                    "docx",
+                    "--outdir",
+                    str(output_dir),
+                    str(source_path),
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        except FileNotFoundError as exc:
+            raise AppException(
+                "Impossibile convertire file .doc: comando LibreOffice 'soffice' non trovato. "
+                "Installa LibreOffice e configura LIBREOFFICE_BINARY nel file .env.",
+                status_code=500,
+            ) from exc
+        except subprocess.CalledProcessError as exc:  # pragma: no cover - dipendenza esterna
+            logger.error(
+                "Conversione LibreOffice fallita per %s: %s",
+                source_path,
+                exc.stderr.decode(errors="ignore"),
+            )
+            raise AppException(
+                "Conversione del file .doc non riuscita. Verifica che il file non sia corrotto.",
+                status_code=500,
+            ) from exc
+
+        logger.debug(
+            "LibreOffice conversion output for %s: %s",
+            source_path,
+            result.stdout.decode(errors="ignore"),
+        )
+
+        converted_path = source_path.with_suffix(".docx")
+        if not converted_path.exists():
+            raise AppException(
+                "Conversione .doc -> .docx non riuscita: file risultante mancante.",
+                status_code=500,
+            )
+        return converted_path
 
     def _extract_spreadsheet_text(self, data: bytes, extension: str) -> str:
         lines: list[str] = []
