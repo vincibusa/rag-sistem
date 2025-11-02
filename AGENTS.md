@@ -1,21 +1,138 @@
-# Repository Guidelines
+# CLAUDE.md
 
-## Project Structure & Module Organization
-The repository is split between `backend/` (FastAPI) and `frontend/` (Next.js). Backend modules live under `backend/app`, with `api/` for routers, `services/` and `rag/` for domain logic, and `tasks/` for async jobs. Database configuration and migrations are handled in `backend/alembic/`. The Next.js app keeps pages and server actions in `frontend/app`, reusable UI in `frontend/components`, hooks in `frontend/hooks`, and shared utilities in `frontend/lib`. Support scripts live in `scripts/`, and architectural notes stay in `docs/`.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Build, Test, and Development Commands
-- `./scripts/dev.sh`: boots PostgreSQL, Qdrant, and Redis via Docker with health checks.
-- `cd backend && uvicorn app.main:app --reload`: launches FastAPI with live reload.
-- `cd backend && ruff check app`: runs the Python linter; apply `ruff format` if needed.
-- `cd backend && pytest`: executes backend unit and integration tests (ensure the `dev` extras are installed).
-- `cd frontend && npm run dev`: starts the Next.js dev server on port 3000; use `npm run build` before containerizing.
-- `cd frontend && npm run lint`: enforces the ESLint ruleset before opening a PR.
+## Project Overview
 
-## Coding Style & Naming Conventions
-Python code follows Ruff’s configuration: 4-space indentation, 100-character lines, double quotes, and import sorting. Use snake_case for modules and functions, CamelCase for Pydantic models, and PascalCase for class-based services. Frontend files are TypeScript-first; prefer functional React components, colocated CSS via Tailwind, and kebab-case filenames inside `app/` route segments. Keep shared UI under `components/` with PascalCase directories, and colocate component-specific hooks in matching `hooks/` files.
+This is a full-stack RAG (Retrieval-Augmented Generation) document management system with:
+- **Backend**: FastAPI Python application using DataPizza AI framework
+- **Frontend**: Next.js React application with TypeScript and Tailwind CSS
+- **Database**: PostgreSQL for document metadata and chunk storage
+- **Vector Store**: Qdrant for semantic search and embeddings
+- **Embeddings**: Ollama with mxbai-embed-large model
+- **Task Queue**: Celery with Redis for background document processing
 
-## Testing Guidelines
-Place backend tests under `backend/tests`, mirroring the package layout (`tests/api`, `tests/services`, etc.). Name files `test_<target>.py` and rely on Pytest fixtures for database or Redis setup. When checking vector-search behavior, seed minimal datasets via factories instead of hitting live services. Frontend component or integration tests should sit beside source files as `<Component>.test.tsx`; use React Testing Library patterns and stub network calls with MSW. Aim to cover new request handlers and UI flows before merging.
+## Development Commands
 
-## Commit & Pull Request Guidelines
-Follow the concise message style in history: lowercase, present tense summaries prefixed by scope when useful (e.g., `backend: add upload validation`). Each PR should explain the change, list verification steps (`pytest`, `npm run lint`, screenshots for UI updates), and link related issues. Rebase before review, ensure CI-equivalent commands pass locally, and call out follow-up work in the description.
+### Infrastructure Setup
+```bash
+# Start database, Qdrant, and Redis
+./scripts/dev.sh
+
+# Check infrastructure health
+./scripts/check_infrastructure.sh
+
+# Setup Ollama embeddings
+./scripts/setup_ollama.sh
+```
+
+### Backend Development
+```bash
+cd backend
+
+# Setup virtual environment
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
+
+# Database migrations
+alembic -c alembic.ini upgrade head
+
+# Run development server
+uvicorn app.main:app --reload
+
+# Run Celery worker
+celery -A app.core.celery_app worker --loglevel=info
+
+# Code quality
+ruff check .
+ruff format .
+```
+
+### Frontend Development
+```bash
+cd frontend
+
+# Install dependencies
+npm install
+
+# Development server
+npm run dev
+
+# Build
+npm run build
+
+# Lint
+npm run lint
+```
+
+## Architecture
+
+### Backend Structure
+- `app/main.py` - FastAPI application factory
+- `app/core/config.py` - Settings management with Pydantic
+- `app/models/` - SQLAlchemy models for documents and chunks
+- `app/services/` - Business logic layer
+- `app/api/routes/` - HTTP endpoints
+- `app/rag/` - RAG pipeline components using DataPizza
+- `app/tasks/` - Celery background tasks
+
+### RAG Pipeline Components
+- **Ingestion Pipeline** (`app/rag/pipelines.py`): Docling/Text Parser → NodeSplitter → OllamaChunkEmbedder
+- **Retrieval Pipeline**: ToolRewriter → OllamaQueryEmbedder → VectorSearch → ChatPromptTemplate → OpenAI Generator
+- **Vector Store**: Qdrant with dense embeddings (1024 dimensions, cosine distance)
+- **Embedding Model**: Ollama with mxbai-embed-large
+
+### Document Processing Flow
+1. Upload via `/api/documents/upload` → stored in PostgreSQL
+2. Background task processes document → creates chunks with embeddings
+3. Chunks stored in Qdrant vector store with metadata linking to PostgreSQL
+4. Search queries use semantic search in Qdrant → retrieve relevant chunks → generate responses
+
+### Key Configuration
+- **Embedding Dimensions**: 1024 (configured in `RAG_EMBED_DIMENSIONS`)
+- **Chunk Size**: 1000 characters with 100 overlap
+- **Vector Name**: "default" (configured in `RAG_EMBED_NAME`)
+- **Collection Name**: "rag_documents" (configured in `QDRANT_COLLECTION_NAME`)
+
+## Important Notes
+
+### Vector Store Configuration
+The Qdrant collection is configured for **dense embeddings only** using `EmbeddingFormat.DENSE`. The error "Conversion between sparse and regular vectors failed" indicates a mismatch between the configured vector format and the embedding type being used.
+
+### DataPizza Integration
+The project uses DataPizza 0.0.7 with custom components for Ollama integration. Key custom components:
+- `OllamaChunkEmbedder` - Batch embedding of document chunks
+- `OllamaQueryEmbedder` - Embedding of user queries
+- `_VectorSearchModule` - Wrapper to ensure proper vector configuration
+
+### File Processing
+Supported file types: PDF, DOC, DOCX, XLS, XLSX, TXT
+- Text files processed directly
+- Spreadsheets converted to text format before processing
+- Documents processed using Docling parser
+
+### Environment Variables
+Required services: PostgreSQL, Qdrant, Redis, Ollama
+Key environment variables in `.env`:
+- Database: `POSTGRES_*`
+- Vector store: `QDRANT_*`
+- Embeddings: `OLLAMA_*`
+- OpenAI: `OPENAI_API_KEY` for generation
+
+## Common Development Tasks
+
+### Adding New Document Types
+1. Add extension to `SUPPORTED_EXTENSIONS` in `DocumentProcessingService`
+2. Implement parser in `_prepare_document_file` method
+3. Add dependencies to `pyproject.toml`
+
+### Modifying RAG Pipeline
+1. Update pipeline components in `app/rag/pipelines.py`
+2. Modify embedding configuration in `app/rag/vectorstore.py`
+3. Update vector search parameters in `_VectorSearchModule`
+
+### Debugging Vector Search Issues
+- Check Qdrant collection configuration matches embedding dimensions
+- Verify Ollama model returns correct vector dimensions
+- Ensure `vector_name` parameter is consistently used in search requests
