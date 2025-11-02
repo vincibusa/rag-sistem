@@ -94,3 +94,32 @@ def download_document(
             "X-Checksum-SHA256": document.checksum_sha256,
         },
     )
+
+
+@router.delete(
+    "/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Elimina documento",
+)
+def delete_document(
+    document_id: UUID,
+    session=Depends(get_db_session),
+) -> Response:
+    service = DocumentService(session)
+    service.delete_document(document_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/{document_id}/reprocess",
+    response_model=DocumentSummary,
+    summary="Rielabora documento",
+)
+def reprocess_document(
+    document_id: UUID,
+    session=Depends(get_db_session),
+) -> DocumentSummary:
+    service = DocumentService(session)
+    document = service.mark_document_for_reprocessing(document_id)
+    enqueue_document_processing(document.id)
+    return DocumentSummary.model_validate(document)

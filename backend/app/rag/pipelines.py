@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 from functools import lru_cache
 from typing import Literal
 
 from datapizza.clients.openai import OpenAIClient
+from datapizza.core.models import PipelineComponent
 from datapizza.modules.parsers import TextParser
 from datapizza.modules.parsers.docling import DoclingParser
 from datapizza.modules.prompt import ChatPromptTemplate
@@ -39,7 +41,7 @@ def create_ingestion_pipeline(kind: IngestionKind) -> IngestionPipeline:
 
 def _resolve_parser(kind: IngestionKind):
     if kind == "docling":
-        return DoclingParser()
+        return _DoclingParserAdapter()
     if kind == "text":
         return TextParser()
     raise ValueError(f"Parser non supportato: {kind}")
@@ -62,10 +64,11 @@ def create_retrieval_pipeline() -> DagPipeline:
 
     vectorstore = get_vectorstore()
     ensure_collection(vectorstore)
-    vector_module = (
-        vectorstore.as_module_component()
-        if hasattr(vectorstore, "as_module_component")
-        else vectorstore
+    vector_module: PipelineComponent
+    vector_module = _VectorSearchModule(
+        vectorstore,
+        default_vector_name=settings.rag_embedding_name,
+        expected_dimensions=settings.rag_embedding_dimensions,
     )
 
     prompt_template = ChatPromptTemplate(
@@ -105,3 +108,89 @@ def _get_openai_client() -> OpenAIClient:
         api_key=settings.openai_api_key,
         model=settings.openai_model_name,
     )
+class _VectorSearchModule(PipelineComponent):
+    """Ensure search requests always include the configured dense vector name."""
+
+    def __init__(self, vectorstore, *, default_vector_name: str, expected_dimensions: int) -> None:
+        self._vectorstore = vectorstore
+        self._default_vector_name = default_vector_name
+        self._expected_dimensions = expected_dimensions
+
+    def _run(
+        self,
+        collection_name: str,
+        query_vector: list[float] | None = None,
+        k: int = 10,
+        **kwargs: object,
+    ) -> list:
+        vector_payload = query_vector
+
+        if isinstance(vector_payload, dict):
+            extracted = vector_payload.get("query_vector")
+            if isinstance(extracted, list):
+                logger.warning("Query vector delivered as mapping; extracting 'query_vector' key.")
+                vector_payload = extracted
+            else:
+                logger.warning(
+                    "RAG retriever received a dict query vector without a valid 'query_vector' list: %s",
+                    vector_payload,
+                )
+                raise ValueError("Query vector mapping must contain a 'query_vector' list.")
+
+        if not isinstance(vector_payload, list) or not vector_payload:
+            logger.warning(
+                "RAG retriever received an invalid query vector (type=%s).",
+                type(vector_payload).__name__,
+            )
+            raise ValueError("Query vector must be a non-empty list of floats.")
+
+        if len(vector_payload) != self._expected_dimensions:
+            logger.warning(
+                "Query vector length mismatch (expected=%s, got=%s) for collection %s.",
+                self._expected_dimensions,
+                len(vector_payload),
+                collection_name,
+            )
+
+        vector_name = kwargs.get("vector_name")  # type: ignore[assignment]
+        if not isinstance(vector_name, str):
+            kwargs["vector_name"] = self._default_vector_name
+            logger.warning(
+                "vector_name missing for Qdrant search; defaulting to '%s'.",
+                self._default_vector_name,
+            )
+        elif vector_name != self._default_vector_name:
+            logger.warning(
+                "vector_name override detected: expected '%s', received '%s'.",
+                self._default_vector_name,
+                vector_name,
+            )
+
+        try:
+            return self._vectorstore.search(
+                collection_name=collection_name,
+                query_vector=vector_payload,
+                k=k,
+                **kwargs,
+            )
+        except Exception as exc:  # pragma: no cover - delegated to vectorstore
+            logger.warning(
+                "Qdrant search failed (collection=%s, vector_name=%s, k=%s): %s",
+                collection_name,
+                kwargs.get("vector_name"),
+                k,
+                exc,
+            )
+            raise
+
+
+class _DoclingParserAdapter(DoclingParser):
+    """Bridge DoclingParser to the generic parser interface expected by datapizza."""
+
+    def _run(self, text: str, metadata: dict | None = None):  # type: ignore[override]
+        if metadata:
+            logger.debug("Docling parser ignoring metadata during ingestion: keys=%s", list(metadata))
+        return super().parse(file_path=text)
+
+    async def _a_run(self, text: str, metadata: dict | None = None):  # type: ignore[override]
+        return await asyncio.to_thread(super().parse, file_path=text)

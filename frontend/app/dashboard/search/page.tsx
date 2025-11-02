@@ -109,10 +109,18 @@ export default function ChatPage() {
 			if (response.chunks && response.chunks.length > 0) {
 				responseText += '\n\n**Fonti trovate:**\n\n'
 				response.chunks.forEach((chunk, index) => {
-					responseText += `${index + 1}. ${chunk.text.substring(0, 200)}...\n`
+					const metadata = chunk.metadata ?? undefined
+					const source = chunk.document_name || (typeof metadata === 'object' ? (metadata.source as string | undefined) : undefined)
+					const chunkHeading = source ? `**${source}**` : `Documento ${index + 1}`
+					const preview = chunk.text.length > 200 ? `${chunk.text.substring(0, 200)}...` : chunk.text
+					responseText += `${index + 1}. ${chunkHeading}: ${preview}\n`
 					if (chunk.score !== null && chunk.score !== undefined) {
-						responseText += `   _Rilevanza: ${(chunk.score * 100).toFixed(1)}%_\n\n`
+						responseText += `   _Rilevanza: ${(chunk.score * 100).toFixed(1)}%_\n`
 					}
+					if (chunk.chunk_index !== null && chunk.chunk_index !== undefined) {
+						responseText += `   _Chunk #: ${chunk.chunk_index}_\n`
+					}
+					responseText += '\n'
 				})
 			}
 

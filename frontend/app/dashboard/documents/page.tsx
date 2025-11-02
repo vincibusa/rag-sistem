@@ -32,7 +32,13 @@ import { FileText, Download, Search, Filter, MoreVertical, Eye, Trash2, RefreshC
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import { listDocuments, downloadDocument, ApiClientError } from '@/lib/api-client'
+import {
+	listDocuments,
+	downloadDocument,
+	deleteDocument,
+	reprocessDocument,
+	ApiClientError,
+} from '@/lib/api-client'
 import type { DocumentSummary } from '@/lib/types'
 
 export default function DocumentsPage() {
@@ -44,6 +50,7 @@ export default function DocumentsPage() {
 	const [total, setTotal] = useState(0)
 	const [limit] = useState(20)
 	const [offset, setOffset] = useState(0)
+	const [actionState, setActionState] = useState<Record<string, 'delete' | 'reprocess'>>({})
 
 	const fetchDocuments = useCallback(async () => {
 		setIsLoading(true)
@@ -80,12 +87,12 @@ export default function DocumentsPage() {
 
 	const mapStatus = (status: DocumentSummary['status']): 'processing' | 'ready' | 'error' => {
 		switch (status) {
-			case 'completed':
+			case 'ready':
 				return 'ready'
 			case 'failed':
 				return 'error'
-			case 'pending':
 			case 'processing':
+			case 'new':
 			default:
 				return 'processing'
 		}
@@ -172,17 +179,67 @@ export default function DocumentsPage() {
 	}
 
 	const handleDelete = async (documentId: string, documentName: string) => {
-		// TODO: Implementare eliminazione quando backend API sarà disponibile
-		toast.info('Funzionalità di eliminazione in arrivo', {
-			description: `Eliminazione di ${documentName} non ancora implementata`,
-		})
+		const confirmed = window.confirm(
+			`Sei sicuro di voler eliminare "${documentName}"? L'operazione non può essere annullata.`
+		)
+		if (!confirmed) return
+
+		setActionState((prev) => ({ ...prev, [documentId]: 'delete' }))
+
+		try {
+			await deleteDocument(documentId)
+			toast.success('Documento eliminato', {
+				description: documentName,
+			})
+
+			const isLastItemOnPage = documents.length === 1
+			if (isLastItemOnPage && offset > 0) {
+				setOffset((prev) => Math.max(0, prev - limit))
+			} else {
+				await fetchDocuments()
+			}
+		} catch (error) {
+			const errorMessage =
+				error instanceof ApiClientError
+					? error.detail
+					: 'Errore durante l\'eliminazione'
+			toast.error('Errore eliminazione', {
+				description: errorMessage,
+			})
+		} finally {
+			setActionState((prev) => {
+				const next = { ...prev }
+				delete next[documentId]
+				return next
+			})
+		}
 	}
 
 	const handleReprocess = async (documentId: string) => {
-		// TODO: Implementare rielaborazione quando backend API sarà disponibile
-		toast.info('Funzionalità di rielaborazione in arrivo', {
-			description: 'Rielaborazione documenti non ancora implementata',
-		})
+		setActionState((prev) => ({ ...prev, [documentId]: 'reprocess' }))
+		try {
+			const updatedDocument = await reprocessDocument(documentId)
+			setDocuments((prev) =>
+				prev.map((doc) => (doc.id === documentId ? updatedDocument : doc))
+			)
+			toast.success('Rielaborazione avviata', {
+				description: 'Il documento verrà elaborato nuovamente a breve.',
+			})
+		} catch (error) {
+			const errorMessage =
+				error instanceof ApiClientError
+					? error.detail
+					: 'Errore durante la rielaborazione'
+			toast.error('Errore rielaborazione', {
+				description: errorMessage,
+			})
+		} finally {
+			setActionState((prev) => {
+				const next = { ...prev }
+				delete next[documentId]
+				return next
+			})
+		}
 	}
 
 	const handleRefresh = () => {
@@ -357,11 +414,14 @@ export default function DocumentsPage() {
 									</TableRow>
 								</TableHeader>
 								<TableBody>
-									{filteredDocuments.map((doc) => {
-										const docType = getFileTypeFromMime(doc.content_type)
-										const mappedStatus = mapStatus(doc.status)
-										return (
-											<TableRow
+						{filteredDocuments.map((doc) => {
+							const docType = getFileTypeFromMime(doc.content_type)
+							const mappedStatus = mapStatus(doc.status)
+							const currentAction = actionState[doc.id]
+							const isReprocessing = currentAction === 'reprocess'
+							const isDeleting = currentAction === 'delete'
+							return (
+								<TableRow
 												key={doc.id}
 												className="hover:bg-muted/50"
 											>
@@ -401,42 +461,50 @@ export default function DocumentsPage() {
 														>
 															<Download className="h-4 w-4" />
 														</Button>
-														<DropdownMenu>
-															<DropdownMenuTrigger asChild>
-																<Button
-																	variant="ghost"
-																	size="icon"
-																	className="h-8 w-8"
-																	aria-label="Altre opzioni"
-																>
-																	<MoreVertical className="h-4 w-4" />
-																</Button>
-															</DropdownMenuTrigger>
-															<DropdownMenuContent align="end">
-																<DropdownMenuItem onClick={() => handleView(doc.id)}>
-																	<Eye className="h-4 w-4 mr-2" />
-																	Visualizza
-																</DropdownMenuItem>
-																<DropdownMenuItem onClick={() => handleDownload(doc.id, doc.filename)}>
-																	<Download className="h-4 w-4 mr-2" />
-																	Scarica
-																</DropdownMenuItem>
-																{mappedStatus === 'processing' && (
-																	<DropdownMenuItem onClick={() => handleReprocess(doc.id)}>
-																		<RefreshCw className="h-4 w-4 mr-2" />
-																		Rielabora
-																	</DropdownMenuItem>
-																)}
-																<DropdownMenuSeparator />
-																<DropdownMenuItem
-																	onClick={() => handleDelete(doc.id, doc.filename)}
-																	className="text-destructive focus:text-destructive"
-																>
-																	<Trash2 className="h-4 w-4 mr-2" />
-																	Elimina
-																</DropdownMenuItem>
-															</DropdownMenuContent>
-														</DropdownMenu>
+										<DropdownMenu>
+											<DropdownMenuTrigger asChild>
+												<Button
+													variant="ghost"
+													size="icon"
+													className="h-8 w-8"
+													aria-label="Altre opzioni"
+												>
+													<MoreVertical className="h-4 w-4" />
+												</Button>
+											</DropdownMenuTrigger>
+											<DropdownMenuContent align="end">
+												<DropdownMenuItem onClick={() => handleView(doc.id)}>
+													<Eye className="h-4 w-4 mr-2" />
+													Visualizza
+												</DropdownMenuItem>
+												<DropdownMenuItem onClick={() => handleDownload(doc.id, doc.filename)}>
+													<Download className="h-4 w-4 mr-2" />
+													Scarica
+												</DropdownMenuItem>
+												{mappedStatus === 'error' && (
+													<DropdownMenuItem
+														onClick={() => handleReprocess(doc.id)}
+														disabled={isReprocessing}
+													>
+														<RefreshCw
+															className={cn('h-4 w-4 mr-2', isReprocessing && 'animate-spin')}
+														/>
+														Rielabora
+													</DropdownMenuItem>
+												)}
+												<DropdownMenuSeparator />
+												<DropdownMenuItem
+													onClick={() => handleDelete(doc.id, doc.filename)}
+													disabled={isDeleting || isReprocessing}
+													className="text-destructive focus:text-destructive"
+												>
+													<Trash2
+														className={cn('h-4 w-4 mr-2', isDeleting && 'animate-spin')}
+													/>
+													Elimina
+												</DropdownMenuItem>
+											</DropdownMenuContent>
+										</DropdownMenu>
 													</div>
 												</TableCell>
 											</TableRow>

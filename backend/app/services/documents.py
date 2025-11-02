@@ -11,7 +11,9 @@ from sqlalchemy.orm import Session
 
 from app.core import exceptions
 from app.core.config import settings
+from app.core.logging import logger
 from app.models import Document, DocumentStatus
+from app.rag import ensure_collection, get_vectorstore
 
 
 @dataclass
@@ -96,4 +98,42 @@ class DocumentService:
         document = self.session.get(Document, document_id)
         if document is None:
             raise exceptions.AppException("Documento non trovato", status_code=404)
+        return document
+
+    def delete_document(self, document_id: uuid.UUID) -> None:
+        document = self.session.get(Document, document_id)
+        if document is None:
+            raise exceptions.AppException("Documento non trovato", status_code=404)
+
+        ensure_collection()
+        vectorstore = get_vectorstore()
+        point_ids = [chunk.qdrant_point_id for chunk in document.chunks if chunk.qdrant_point_id]
+        if point_ids:
+            try:
+                vectorstore.remove(
+                    collection_name=settings.qdrant_collection_name,
+                    ids=point_ids,
+                )
+            except Exception as exc:  # pragma: no cover - qdrant failure surfaces upstream
+                logger.warning(
+                    "Impossibile rimuovere i punti Qdrant per il documento %s: %s",
+                    document_id,
+                    exc,
+                )
+
+        self.session.delete(document)
+        self.session.commit()
+
+    def mark_document_for_reprocessing(self, document_id: uuid.UUID) -> Document:
+        document = self.session.get(Document, document_id)
+        if document is None:
+            raise exceptions.AppException("Documento non trovato", status_code=404)
+
+        document.status = DocumentStatus.PROCESSING
+        extra = dict(document.extra_metadata or {})
+        extra.pop("last_error", None)
+        document.extra_metadata = extra or None
+
+        self.session.commit()
+        self.session.refresh(document)
         return document

@@ -83,7 +83,17 @@ class DocumentProcessingService:
                 raise RuntimeError("Nessun chunk generato dall'ingestione del documento.")
 
             enriched_chunks = self._enrich_chunks(chunks, document)
+            logger.info(
+                "Indicizzazione documento %s: %s chunk pronti per Qdrant",
+                document.id,
+                len(enriched_chunks),
+            )
             vectorstore.add(enriched_chunks, collection_name=settings.qdrant_collection_name)
+            logger.info(
+                "Documento %s indicizzato correttamente nella collezione %s",
+                document.id,
+                settings.qdrant_collection_name,
+            )
             self._persist_chunks(document, enriched_chunks)
 
         document.status = DocumentStatus.READY
@@ -169,6 +179,7 @@ class DocumentProcessingService:
                     "document_id": str(document.id),
                     "chunk_index": index,
                     "source": document.filename,
+                    "document_name": document.filename,
                 }
             )
             chunk.metadata = metadata
@@ -221,6 +232,7 @@ class RagRetrievalService:
         ensure_collection()
         self.vectorstore = get_vectorstore()
         self._query_embedder = OllamaQueryEmbedder()
+        self._vector_name = settings.rag_embedding_name
 
     def run(self, query: str, *, top_k: int | None = None) -> dict[str, Any]:
         pipeline = create_retrieval_pipeline()
@@ -232,6 +244,7 @@ class RagRetrievalService:
                 "retriever": {
                     "collection_name": settings.qdrant_collection_name,
                     "k": k_value,
+                    "vector_name": self._vector_name,
                 },
                 "generator": {
                     "input": query,
@@ -244,14 +257,21 @@ class RagRetrievalService:
         answer = _extract_text(result.get("generator"))
         retrieved_chunks = result.get("retriever") or []
 
-        chunks_payload = [
-            {
+        chunks_payload = []
+        for chunk in retrieved_chunks:
+            metadata = self._to_serialisable(chunk.metadata)
+            entry: dict[str, Any] = {
                 "id": getattr(chunk, "id", None),
                 "text": getattr(chunk, "text", ""),
-                "metadata": self._to_serialisable(chunk.metadata),
+                "metadata": metadata,
+                "document_id": metadata.get("document_id"),
+                "document_name": metadata.get("document_name") or metadata.get("source"),
+                "chunk_index": metadata.get("chunk_index"),
             }
-            for chunk in retrieved_chunks
-        ]
+            score = getattr(chunk, "score", None)
+            if score is not None:
+                entry["score"] = score
+            chunks_payload.append(entry)
 
         return {
             "query": query,
@@ -276,6 +296,7 @@ class RagRetrievalService:
             collection_name=settings.qdrant_collection_name,
             query_vector=vector,
             k=top_k or settings.rag_top_k,
+            vector_name=self._vector_name,
         )
         return list(results)
 
