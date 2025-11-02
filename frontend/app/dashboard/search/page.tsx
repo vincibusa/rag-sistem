@@ -12,12 +12,13 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { MessageSquare, Send, Copy, Check, Loader2, User, Bot, MoreVertical, RefreshCw, Trash2, Edit2, Sparkles } from 'lucide-react'
+import { MessageSquare, Send, Copy, Check, Loader2, User, Bot, MoreVertical, RefreshCw, Trash2, Edit2, Sparkles, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { toast } from 'sonner'
 import { ragSearch, ApiClientError } from '@/lib/api-client'
+import { DocumentFormFilling } from './components/DocumentFormFilling'
 
 interface Message {
 	id: string
@@ -39,6 +40,7 @@ export default function ChatPage() {
 	const [isLoading, setIsLoading] = useState(false)
 	const [copiedId, setCopiedId] = useState<string | null>(null)
 	const [streamingContent, setStreamingContent] = useState<string>('')
+	const [isFormFillingOpen, setIsFormFillingOpen] = useState(false)
 	const scrollAreaRef = useRef<HTMLDivElement>(null)
 	const textareaRef = useRef<HTMLTextAreaElement>(null)
 	const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -217,6 +219,15 @@ export default function ChatPage() {
 								Chat intelligente basata sui tuoi documenti con RAG
 							</p>
 						</div>
+						<Button 
+							variant="outline" 
+							size="sm"
+							className="gap-2"
+							onClick={() => setIsFormFillingOpen(true)}
+						>
+							<FileText className="h-4 w-4" />
+							Compila Documento
+						</Button>
 					</div>
 				</div>
 
@@ -436,6 +447,12 @@ export default function ChatPage() {
 					</div>
 				</div>
 			</div>
+
+			{/* Document Form Filling Dialog */}
+			<DocumentFormFilling 
+				isOpen={isFormFillingOpen} 
+				onOpenChange={setIsFormFillingOpen} 
+			/>
 		</>
 	)
 }
