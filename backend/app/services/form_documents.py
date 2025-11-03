@@ -775,7 +775,20 @@ class FormDocumentService:
         page_outputs: List[str] = []
         with fitz.open(stream=form_document.data, filetype="pdf") as doc:
             for page_num, page in enumerate(doc):
-                text = page.get_text()
+                raw = page.get_text("rawdict")
+                lines: List[str] = []
+                for block in raw.get("blocks", []):
+                    if block.get("type") != 0:
+                        continue
+                    block_lines: List[str] = []
+                    for line in block.get("lines", []):
+                        text_line = "".join(span.get("text", "") for span in line.get("spans", []))
+                        block_lines.append(text_line)
+                    if block_lines:
+                        lines.extend(block_lines)
+                        lines.append("")
+                text = "\n".join(lines).rstrip()
+
                 page_fields = [
                     field
                     for field in fields
@@ -795,14 +808,14 @@ class FormDocumentService:
                         replacements.append((None, placeholder, value))
                 replacements.sort(key=lambda item: item[0] if item[0] is not None else -1, reverse=True)
                 for text_pos, placeholder, value in replacements:
-                    if text_pos is not None and placeholder:
+                    if not placeholder:
+                        continue
+                    if text_pos is not None:
                         segment = text[text_pos : text_pos + len(placeholder)]
                         if segment == placeholder:
                             text = text[:text_pos] + value + text[text_pos + len(placeholder) :]
-                        else:
-                            text = text.replace(placeholder, value, 1)
-                    elif placeholder:
-                        text = text.replace(placeholder, value, 1)
+                            continue
+                    text = text.replace(placeholder, value, 1)
                 page_outputs.append(text)
         return "\n\n".join(page_outputs)
 
