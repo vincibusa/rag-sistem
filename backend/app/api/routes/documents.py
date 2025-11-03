@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from io import BytesIO
 from typing import Annotated, List
 from uuid import UUID
@@ -200,8 +201,16 @@ def auto_fill_form(
     """
     Auto-compila un documento form usando il sistema RAG per trovare i valori.
     """
+    logger = logging.getLogger("medit.backend")
+    logger.info("Richiesta auto-fill per form %s con %s campi richiesti.", form_id, len(request.field_names or []))
     service = FormDocumentService(session)
     response = service.auto_fill_form(form_id, request)
+    logger.info(
+        "Auto-fill completato per form %s: %s campi compilati, confidenza media %.3f.",
+        form_id,
+        response.total_filled,
+        response.average_confidence,
+    )
     
     return response
 
@@ -218,6 +227,8 @@ def download_filled_form(
     """
     Scarica il documento form compilato con i valori trovati dal RAG.
     """
+    logger = logging.getLogger("medit.backend")
+    logger.info("Download documento compilato richiesto per form %s.", form_id)
     service = FormDocumentService(session)
     filled_document = service.get_filled_form(form_id)
     

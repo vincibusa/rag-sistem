@@ -67,6 +67,10 @@ class AutoFillRequest(BaseModel):
     form_id: UUID = Field(..., description="ID del documento form")
     field_names: Optional[List[str]] = Field(None, description="Campi specifici da compilare (se None, tutti i campi)")
     search_context: Optional[str] = Field(None, description="Contesto aggiuntivo per la ricerca")
+    agent_guidance: Optional[str] = Field(
+        None,
+        description="Istruzioni testuali opzionali per orientare gli agenti durante la compilazione",
+    )
 
 
 class AutoFillResponse(BaseModel):
@@ -76,3 +80,7 @@ class AutoFillResponse(BaseModel):
     total_filled: int = Field(..., description="Numero di campi compilati")
     average_confidence: float = Field(..., description="Punteggio di confidenza medio")
     search_queries: List[str] = Field(..., description="Query di ricerca utilizzate")
+    filled_document_text: Optional[str] = Field(
+        None,
+        description="Versione testuale del documento compilato con i placeholder sostituiti.",
+    )

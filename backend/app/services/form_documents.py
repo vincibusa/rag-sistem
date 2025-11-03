@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 import fitz  # PyMuPDF
 from docx import Document as DocxDocument
 from fastapi import UploadFile
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppException
@@ -96,6 +97,7 @@ class FormDocumentService:
 
         logger.info("Inizio auto-compilazione per form %s con %s campi", form_id, len(fields))
         logger.info("Contesto di ricerca fornito: %s", request.search_context)
+        logger.info("Istruzioni agente: %s", request.agent_guidance)
 
         if request.field_names:
             fields = [field for field in fields if field.name in request.field_names]
@@ -103,21 +105,37 @@ class FormDocumentService:
         filled_fields: List[FormField] = []
         search_queries: List[str] = []
         total_confidence = 0.0
+        query_cache: dict[str, Sequence[Any]] = {}
+        combined_guidance = " ".join(
+            part.strip()
+            for part in (
+                request.search_context or "",
+                request.agent_guidance or "",
+            )
+            if part and part.strip()
+        )
+        if not combined_guidance:
+            combined_guidance = "Compila automaticamente tutti i campi del form."
 
         for field in fields:
             field_payload = field.model_dump()
-            plan = self._query_agent.build_query(field_payload, user_context=request.search_context)
+            plan = self._query_agent.build_query(field_payload, user_context=combined_guidance or None)
             query = plan.query.strip() or field.name
             search_queries.append(query)
 
             try:
                 logger.info("Ricerca RAG per campo '%s' con query: %s", field.name, query)
-                rag_results = list(self.rag_service.semantic_search(query=query, top_k=3))
+                if query in query_cache:
+                    rag_results = list(query_cache[query])
+                else:
+                    rag_results = list(self.rag_service.semantic_search(query=query, top_k=2))
+                    query_cache[query] = rag_results
                 result_payload = [self._chunk_to_payload(chunk) for chunk in rag_results]
                 decision = self._completion_agent.decide(
                     field=field_payload,
                     query=query,
                     chunks=result_payload,
+                    guidance=combined_guidance,
                 )
 
                 selected_value = (decision.value or "").strip()
@@ -152,6 +170,7 @@ class FormDocumentService:
 
         average_confidence = total_confidence / len(filled_fields) if filled_fields else 0.0
         self._persist_filled_values(form_id, filled_fields)
+        compiled_text = self._render_filled_text(form_document, filled_fields)
 
         return AutoFillResponse(
             form_id=form_id,
@@ -159,18 +178,38 @@ class FormDocumentService:
             total_filled=len([f for f in filled_fields if f.value]),
             average_confidence=average_confidence,
             search_queries=search_queries,
+            filled_document_text=compiled_text,
         )
 
     def get_filled_form(self, form_id: UUID) -> bytes:
         """Genera il documento form compilato."""
         form_document = self._get_form_document(form_id)
         fields = self._get_form_fields(form_id)
+        filled_count = sum(1 for field in fields if field.value)
+        logger.info(
+            "Generazione documento compilato per form %s: %s campi totali, %s con valore.",
+            form_id,
+            len(fields),
+            filled_count,
+        )
 
         try:
             if form_document.form_type == "pdf":
-                return self._fill_pdf_form(form_document, fields)
+                pdf_bytes = self._fill_pdf_form(form_document, fields)
+                logger.info(
+                    "Documento PDF compilato generato per form %s (size=%s bytes).",
+                    form_id,
+                    len(pdf_bytes),
+                )
+                return pdf_bytes
             if form_document.form_type == "word":
-                return self._fill_word_form(form_document, fields)
+                word_bytes = self._fill_word_form(form_document, fields)
+                logger.info(
+                    "Documento Word compilato generato per form %s (size=%s bytes).",
+                    form_id,
+                    len(word_bytes),
+                )
+                return word_bytes
             raise AppException(f"Tipo di form non supportato per il download: {form_document.form_type}")
         except Exception as exc:
             logger.error("Errore durante la generazione del form compilato %s: %s", form_id, exc)
@@ -257,7 +296,7 @@ class FormDocumentService:
         descriptors = self._placeholder_agent.analyse(text, page_num + 1) if self._placeholder_agent else []
         if not descriptors:
             return []
-        return self._convert_ai_fields_to_form_fields(descriptors, page_num, text)
+        return self._convert_ai_fields_to_form_fields(descriptors, page_num, page, text)
 
     def _extract_text_placeholders_with_regex(self, page, page_num: int) -> List[FormField]:
         fields: List[FormField] = []
@@ -282,16 +321,30 @@ class FormDocumentService:
                     context_start = max(line_start, match.start() - 80)
                     context_text = text[context_start:match.start()].strip()
                     field_name = self._generate_field_name_from_context(full_line, context_text)
+                    bbox = None
+                    trimmed_placeholder = placeholder_text.strip()
+                    if trimmed_placeholder:
+                        try:
+                            rects = page.search_for(trimmed_placeholder, hit_max=1)
+                        except Exception:
+                            rects = []
+                        if rects:
+                            rect = rects[0]
+                            bbox = [rect.x0, rect.y0, rect.x1, rect.y1]
+                    position = {
+                        "page": page_num + 1,
+                        "text_position": match.start(),
+                    }
+                    if bbox:
+                        position["bbox"] = bbox
+
                     form_field = FormField(
                         name=field_name,
                         field_type="text",
                         value=None,
                         placeholder=placeholder_text,
                         required=False,
-                        position={
-                            "page": page_num + 1,
-                            "text_position": match.start(),
-                        },
+                        position=position,
                         context=full_line or f"Pagina {page_num + 1}: campo da compilare",
                     )
                     fields.append(form_field)
@@ -308,6 +361,7 @@ class FormDocumentService:
         self,
         descriptors: Iterable[PlaceholderDescriptor],
         page_num: int,
+        page,
         page_text: str,
     ) -> List[FormField]:
         fields: List[FormField] = []
@@ -318,6 +372,7 @@ class FormDocumentService:
             context = descriptor.context.strip()
             name = self._ensure_unique_field_name(descriptor.name)
             text_position = None
+            bbox = None
 
             if placeholder:
                 idx = page_text.find(placeholder, search_offset)
@@ -326,6 +381,13 @@ class FormDocumentService:
                 if idx != -1:
                     text_position = idx
                     search_offset = idx + len(placeholder)
+                try:
+                    rects = page.search_for(placeholder, hit_max=1)
+                except Exception:
+                    rects = []
+                if rects:
+                    rect = rects[0]
+                    bbox = [rect.x0, rect.y0, rect.x1, rect.y1]
 
             metadata = {
                 "type": descriptor.type,
@@ -337,6 +399,8 @@ class FormDocumentService:
             position: Dict[str, Any] = {"page": page_num + 1, "ai": metadata}
             if text_position is not None:
                 position["text_position"] = text_position
+            if bbox:
+                position["bbox"] = bbox
 
             field = FormField(
                 name=name,
@@ -441,22 +505,33 @@ class FormDocumentService:
         return round(confidence, 3)
 
     def _persist_filled_values(self, form_id: UUID, fields: Iterable[FormField]) -> None:
-        model_map = {
-            model.name: model
-            for model in self.session.query(FormFieldModel).filter(
-                FormFieldModel.form_document_id == form_id
+        def _apply_updates() -> None:
+            model_map = {
+                model.name: model
+                for model in self.session.query(FormFieldModel).filter(
+                    FormFieldModel.form_document_id == form_id
+                )
+            }
+            for field in fields:
+                model = model_map.get(field.name)
+                if not model:
+                    continue
+                model.value = field.value
+                model.confidence_score = field.confidence_score
+                model.context = field.context
+                model.placeholder = field.placeholder
+                model.position = field.position
+            self.session.commit()
+
+        try:
+            _apply_updates()
+        except OperationalError as exc:
+            logger.warning(
+                "Connessione al database interrotta durante il salvataggio dei campi del form %s. Ritento una volta.",
+                form_id,
             )
-        }
-        for field in fields:
-            model = model_map.get(field.name)
-            if not model:
-                continue
-            model.value = field.value
-            model.confidence_score = field.confidence_score
-            model.context = field.context
-            model.placeholder = field.placeholder
-            model.position = field.position
-        self.session.commit()
+            self.session.rollback()
+            _apply_updates()
 
     # ---------------------------------------------------------------------
     # Utilità per naming e mapping
@@ -616,8 +691,14 @@ class FormDocumentService:
 
     def _fill_pdf_form(self, form_document: FormDocument, fields: List[FormField]) -> bytes:
         with fitz.open(stream=form_document.data, filetype="pdf") as doc:
-            for page in doc:
-                for widget in page.widgets():
+            total_widgets_filled = 0
+            placeholder_overlays = 0
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                widget_field_names: set[str] = set()
+                widgets = list(page.widgets())
+
+                for widget in widgets:
                     matching_field = next(
                         (f for f in fields if f.name == widget.field_name and f.value),
                         None,
@@ -625,13 +706,128 @@ class FormDocumentService:
                     if matching_field:
                         widget.field_value = matching_field.value
                         widget.update()
+                        if widget.field_name:
+                            widget_field_names.add(widget.field_name)
+                        total_widgets_filled += 1
+
+                page_fields = [
+                    field
+                    for field in fields
+                    if field.value
+                    and isinstance(field.position, dict)
+                    and field.position.get("page") == page_num + 1
+                    and field.name not in widget_field_names
+                ]
+
+                for field in page_fields:
+                    position = field.position or {}
+                    bbox = position.get("bbox") if isinstance(position, dict) else None
+                    if not bbox:
+                        continue
+                    try:
+                        rect = fitz.Rect(*bbox)
+                    except Exception:
+                        continue
+                    rect = fitz.Rect(rect.x0 - 1, rect.y0 - 1, rect.x1 + 1, rect.y1 + 1)
+                    fontsize = max(6, min(14, rect.height * 0.75))
+                    page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1))
+                    page.insert_textbox(
+                        rect,
+                        field.value or "",
+                        fontname="helv",
+                        fontsize=fontsize,
+                        color=(0, 0, 0),
+                        align=0,
+                    )
+                    placeholder_overlays += 1
 
             output_buffer = io.BytesIO()
             doc.save(output_buffer)
+            logger.info(
+                "Compilazione PDF completata: %s widgets , %s placeholder testuali aggiornati.",
+                total_widgets_filled,
+                placeholder_overlays,
+            )
             return output_buffer.getvalue()
 
     def _fill_word_form(self, form_document: FormDocument, fields: List[FormField]) -> bytes:
         return form_document.data
+
+    def _render_filled_text(self, form_document: FormDocument, fields: List[FormField]) -> str | None:
+        if not fields:
+            return None
+
+        try:
+            if form_document.form_type == "pdf":
+                return self._render_pdf_text(form_document, fields)
+            if form_document.form_type == "word":
+                return self._render_word_text(form_document, fields)
+        except Exception as exc:  # pragma: no cover - dipendenza esterna
+            logger.warning(
+                "Impossibile generare testo compilato per form %s: %s",
+                form_document.id,
+                exc,
+            )
+
+        return self._render_fallback_summary(fields)
+
+    def _render_pdf_text(self, form_document: FormDocument, fields: List[FormField]) -> str:
+        page_outputs: List[str] = []
+        with fitz.open(stream=form_document.data, filetype="pdf") as doc:
+            for page_num, page in enumerate(doc):
+                text = page.get_text()
+                page_fields = [
+                    field
+                    for field in fields
+                    if field.value
+                    and isinstance(field.position, dict)
+                    and field.position.get("page") == page_num + 1
+                ]
+                replacements: List[tuple[int | None, str, str]] = []
+                for field in page_fields:
+                    placeholder = field.placeholder or ""
+                    value = field.value or ""
+                    position = field.position or {}
+                    text_pos = position.get("text_position")
+                    if text_pos is not None and placeholder:
+                        replacements.append((text_pos, placeholder, value))
+                    elif placeholder:
+                        replacements.append((None, placeholder, value))
+                replacements.sort(key=lambda item: item[0] if item[0] is not None else -1, reverse=True)
+                for text_pos, placeholder, value in replacements:
+                    if text_pos is not None and placeholder:
+                        segment = text[text_pos : text_pos + len(placeholder)]
+                        if segment == placeholder:
+                            text = text[:text_pos] + value + text[text_pos + len(placeholder) :]
+                        else:
+                            text = text.replace(placeholder, value, 1)
+                    elif placeholder:
+                        text = text.replace(placeholder, value, 1)
+                page_outputs.append(text)
+        return "\n\n".join(page_outputs)
+
+    def _render_word_text(self, form_document: FormDocument, fields: List[FormField]) -> str:
+        buffer = io.BytesIO(form_document.data)
+        document = DocxDocument(buffer)
+        for paragraph in document.paragraphs:
+            for field in fields:
+                if not field.value or not field.placeholder:
+                    continue
+                if field.placeholder in paragraph.text:
+                    paragraph.text = paragraph.text.replace(field.placeholder, field.value)
+        output = io.StringIO()
+        for paragraph in document.paragraphs:
+            output.write(paragraph.text)
+            output.write("\n")
+        return output.getvalue()
+
+    def _render_fallback_summary(self, fields: List[FormField]) -> str:
+        lines = []
+        for field in fields:
+            if not field.value:
+                continue
+            lines.append(f"{field.name}: {field.value}")
+        return "\n".join(lines) if lines else ""
 
     # ---------------------------------------------------------------------
     # Utils

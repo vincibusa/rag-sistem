@@ -1,4 +1,4 @@
-'use client'
+"use client"
 
 import { useState, useRef } from 'react'
 import { Button } from '@/components/ui/button'
@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
+import { Textarea } from '@/components/ui/textarea'
 import { 
   Dialog, 
   DialogContent, 
@@ -24,7 +25,8 @@ import {
   AlertCircle, 
   Search,
   FileCheck,
-  Sparkles
+  Sparkles,
+  Copy
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { 
@@ -49,6 +51,7 @@ export function DocumentFormFilling({ isOpen, onOpenChange }: DocumentFormFillin
   const [extractedFields, setExtractedFields] = useState<FormField[]>([])
   const [filledFields, setFilledFields] = useState<FormField[]>([])
   const [autoFillResponse, setAutoFillResponse] = useState<AutoFillResponse | null>(null)
+  const [agentGuidance, setAgentGuidance] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const resetState = () => {
@@ -59,6 +62,7 @@ export function DocumentFormFilling({ isOpen, onOpenChange }: DocumentFormFillin
     setExtractedFields([])
     setFilledFields([])
     setAutoFillResponse(null)
+    setAgentGuidance('')
   }
 
   const handleFileUpload = async (file: File) => {
@@ -134,10 +138,15 @@ export function DocumentFormFilling({ isOpen, onOpenChange }: DocumentFormFillin
     setIsLoading(true)
 
     try {
+      const trimmedGuidance = agentGuidance.trim()
+      const baseInstruction = 'Compila automaticamente tutti i campi del form.'
+      const combinedContext = trimmedGuidance ? `${baseInstruction} ${trimmedGuidance}` : baseInstruction
+
       const response = await autoFillForm({
         form_id: formDocument.form_id,
         field_names: extractedFields.map(field => field.name),
-        search_context: 'Compila automaticamente tutti i campi del form'
+        search_context: combinedContext,
+        agent_guidance: trimmedGuidance || undefined
       })
 
       setAutoFillResponse(response)
@@ -188,6 +197,18 @@ export function DocumentFormFilling({ isOpen, onOpenChange }: DocumentFormFillin
       toast.error('Errore download', { description: errorMessage })
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleCopyFilledText = async () => {
+    if (!autoFillResponse?.filled_document_text) return
+    try {
+      await navigator.clipboard.writeText(autoFillResponse.filled_document_text)
+      toast.success('Testo compilato copiato negli appunti')
+    } catch (error) {
+      toast.error('Impossibile copiare il testo', {
+        description: error instanceof Error ? error.message : 'Errore sconosciuto'
+      })
     }
   }
 
@@ -364,6 +385,20 @@ export function DocumentFormFilling({ isOpen, onOpenChange }: DocumentFormFillin
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
+                    <div className="space-y-2 mb-6">
+                      <label className="text-sm font-medium">
+                        Istruzioni per l&apos;agente
+                      </label>
+                      <Textarea
+                        value={agentGuidance}
+                        onChange={(event) => setAgentGuidance(event.target.value)}
+                        placeholder="Esempio: usa il contratto di rete firmato nel 2023 e privilegia i dati della società capogruppo."
+                        className="min-h-[120px]"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Aggiungi indicazioni opzionali per guidare la ricerca (documenti da privilegiare, periodo di riferimento, campi prioritari, ecc.).
+                      </p>
+                    </div>
                     <div className="space-y-4">
                       {extractedFields.map((field, index) => (
                         <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
@@ -445,6 +480,28 @@ export function DocumentFormFilling({ isOpen, onOpenChange }: DocumentFormFillin
                               <li key={index}>• {query}</li>
                             ))}
                           </ul>
+                        </div>
+                      )}
+
+                      {autoFillResponse.filled_document_text && (
+                        <div className="space-y-2 p-3 border rounded-lg bg-muted/60">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-medium">Documento compilato (testo)</p>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="gap-2"
+                              onClick={handleCopyFilledText}
+                            >
+                              <Copy className="h-4 w-4" />
+                              Copia
+                            </Button>
+                          </div>
+                          <ScrollArea className="h-64 border rounded-md bg-background p-3">
+                            <pre className="text-sm whitespace-pre-wrap">
+                              {autoFillResponse.filled_document_text}
+                            </pre>
+                          </ScrollArea>
                         </div>
                       )}
 

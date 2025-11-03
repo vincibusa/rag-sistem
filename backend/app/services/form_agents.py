@@ -187,6 +187,7 @@ class DocumentCompletionAgent:
         field: dict[str, Any],
         query: str,
         chunks: Sequence[dict[str, Any]],
+        guidance: str | None = None,
     ) -> FieldCompletionDecision:
         formatted_chunks = "\n".join(
             f"- [{idx}] score={chunk.get('score')} source={chunk.get('metadata', {}).get('document_name')} "
@@ -200,6 +201,7 @@ class DocumentCompletionAgent:
             "Query usata: {query}\n"
             "Placeholder: {placeholder}\n"
             "Contesto: {context}\n"
+            "Istruzioni utente: {guidance}\n"
             "Risultati RAG:\n{chunks}\n\n"
             "Scegli il miglior testo e rispondi in JSON."
         ).format(
@@ -208,6 +210,7 @@ class DocumentCompletionAgent:
             query=query,
             placeholder=field.get("placeholder"),
             context=_truncate(field.get("context", ""), 400),
+            guidance=_truncate(guidance, 400) or "N/A",
             chunks=formatted_chunks or "- Nessun risultato",
         )
 
