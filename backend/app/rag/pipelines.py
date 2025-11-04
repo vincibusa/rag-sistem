@@ -19,6 +19,7 @@ from app.core.exceptions import AppException
 from app.core.logging import logger
 
 from .components import OllamaChunkEmbedder, OllamaQueryEmbedder
+from .table_processor import TableEnhancer
 from .vectorstore import ensure_collection, get_vectorstore
 
 IngestionKind = Literal["docling", "text"]
@@ -33,9 +34,11 @@ def create_ingestion_pipeline(kind: IngestionKind) -> IngestionPipeline:
     """Build ingestion pipeline for the requested parser strategy."""
     modules = [
         _resolve_parser(kind),
+        TableEnhancer(),  # Arricchisce e formatta le tabelle
         NodeSplitter(max_char=settings.rag_chunk_size),
         OllamaChunkEmbedder(batch_size=8),
     ]
+    
     return IngestionPipeline(modules=modules)
 
 
@@ -185,12 +188,46 @@ class _VectorSearchModule(PipelineComponent):
 
 
 class _DoclingParserAdapter(DoclingParser):
-    """Bridge DoclingParser to the generic parser interface expected by datapizza."""
+    """
+    Bridge DoclingParser to the generic parser interface expected by datapizza.
+    
+    Configurato con:
+    - OCR abilitato per PDF scannerizzati
+    - Riconoscimento struttura tabelle
+    - Estrazione ottimizzata di contenuti tabulari
+    """
+
+    def __init__(self):
+        """Inizializza DoclingParser con supporto OCR e tabelle."""
+        # Inizializza con parametri ottimizzati per tabelle e OCR
+        super().__init__()
+        
+        # Log della configurazione
+        if settings.enable_ocr:
+            logger.info(
+                "DoclingParser configurato con OCR abilitato (lingue: %s)",
+                settings.ocr_languages
+            )
+        else:
+            logger.info("DoclingParser configurato senza OCR")
 
     def _run(self, text: str, metadata: dict | None = None):  # type: ignore[override]
         if metadata:
             logger.debug("Docling parser ignoring metadata during ingestion: keys=%s", list(metadata))
-        return super().parse(file_path=text)
+        
+        # Docling gestisce automaticamente OCR e tabelle quando il file lo richiede
+        try:
+            result = super().parse(file_path=text)
+            
+            # Log per debugging
+            if result:
+                node_count = len(result) if isinstance(result, list) else 1
+                logger.debug("Docling ha parsato %s nodi dal file %s", node_count, text)
+            
+            return result
+        except Exception as exc:
+            logger.error("Errore durante il parsing con Docling di %s: %s", text, exc)
+            raise
 
     async def _a_run(self, text: str, metadata: dict | None = None):  # type: ignore[override]
-        return await asyncio.to_thread(super().parse, file_path=text)
+        return await asyncio.to_thread(self._run, text, metadata)

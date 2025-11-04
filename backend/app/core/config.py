@@ -17,6 +17,7 @@ class Settings(BaseSettings):
         env_file=(BACKEND_DIR / ".env", BASE_DIR / ".env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra="ignore",  # Ignora campi extra dal .env
     )
 
     project_name: str = Field(default="Medit RAG Backend", alias="PROJECT_NAME")
@@ -64,6 +65,10 @@ class Settings(BaseSettings):
     rag_top_k: int = Field(default=5, alias="RAG_TOP_K")
     rag_embedding_dimensions: int = Field(default=1024, alias="RAG_EMBED_DIMENSIONS")
     rag_embedding_name: str = Field(default="default", alias="RAG_EMBED_NAME")
+
+    enable_ocr: bool = Field(default=True, alias="ENABLE_OCR")
+    ocr_languages: str = Field(default="it,en", alias="OCR_LANGUAGES")
+    enable_table_captioning: bool = Field(default=True, alias="ENABLE_TABLE_CAPTIONING")
 
     celery_queue_name: str = Field(
         default="documents", alias="CELERY_QUEUE_NAME"
