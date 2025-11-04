@@ -120,7 +120,7 @@ class DocumentProcessingService:
         if extension == "doc":
             target_path.write_bytes(document.data)
             converted_path = self._convert_doc_to_docx(target_path)
-            return converted_path, "docling"
+            return converted_path, "document_ai"
 
         if extension in {"xls", "xlsx"}:
             text = self._extract_spreadsheet_text(document.data, extension)
@@ -135,7 +135,7 @@ class DocumentProcessingService:
             return target_path, "text"
 
         target_path.write_bytes(document.data)
-        return target_path, "docling"
+        return target_path, "document_ai"
 
     def _convert_doc_to_docx(self, source_path: Path) -> Path:
         binary = settings.libreoffice_binary or "soffice"

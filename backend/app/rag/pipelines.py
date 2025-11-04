@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 from functools import lru_cache
 from typing import Literal
 
 from datapizza.clients.openai import OpenAIClient
 from datapizza.core.models import PipelineComponent
 from datapizza.modules.parsers import TextParser
-from datapizza.modules.parsers.docling import DoclingParser
 from datapizza.modules.prompt import ChatPromptTemplate
 from datapizza.modules.rewriters import ToolRewriter
 from datapizza.modules.splitters import NodeSplitter
@@ -19,9 +17,11 @@ from app.core.exceptions import AppException
 from app.core.logging import logger
 
 from .components import OllamaChunkEmbedder, OllamaQueryEmbedder
+from .document_ai_parser import DocumentAIParser
+from .table_processor import TableEnhancer
 from .vectorstore import ensure_collection, get_vectorstore
 
-IngestionKind = Literal["docling", "text"]
+IngestionKind = Literal["document_ai", "text"]
 
 _DEFAULT_REWRITER_PROMPT = (
     "Riscrivi il prompt dell'utente rendendolo più specifico per una ricerca semantica "
@@ -33,17 +33,19 @@ def create_ingestion_pipeline(kind: IngestionKind) -> IngestionPipeline:
     """Build ingestion pipeline for the requested parser strategy."""
     modules = [
         _resolve_parser(kind),
+        TableEnhancer(),  # Arricchisce e formatta le tabelle
         NodeSplitter(max_char=settings.rag_chunk_size),
         OllamaChunkEmbedder(batch_size=8),
     ]
+    
     return IngestionPipeline(modules=modules)
 
 
 def _resolve_parser(kind: IngestionKind):
-    if kind == "docling":
-        return _DoclingParserAdapter()
     if kind == "text":
         return TextParser()
+    if kind == "document_ai":
+        return DocumentAIParser()
     raise ValueError(f"Parser non supportato: {kind}")
 
 
@@ -182,15 +184,3 @@ class _VectorSearchModule(PipelineComponent):
                 exc,
             )
             raise
-
-
-class _DoclingParserAdapter(DoclingParser):
-    """Bridge DoclingParser to the generic parser interface expected by datapizza."""
-
-    def _run(self, text: str, metadata: dict | None = None):  # type: ignore[override]
-        if metadata:
-            logger.debug("Docling parser ignoring metadata during ingestion: keys=%s", list(metadata))
-        return super().parse(file_path=text)
-
-    async def _a_run(self, text: str, metadata: dict | None = None):  # type: ignore[override]
-        return await asyncio.to_thread(super().parse, file_path=text)

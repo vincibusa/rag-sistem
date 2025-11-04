@@ -71,3 +71,7 @@ logs/
 
 # Docker
 .dockerignore
+
+# Google Cloud Service Account Keys
+*-key.json
+document-ai-key.json

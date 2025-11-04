@@ -17,6 +17,7 @@ class Settings(BaseSettings):
         env_file=(BACKEND_DIR / ".env", BASE_DIR / ".env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra="ignore",  # Ignora campi extra dal .env
     )
 
     project_name: str = Field(default="Medit RAG Backend", alias="PROJECT_NAME")
@@ -64,6 +65,28 @@ class Settings(BaseSettings):
     rag_top_k: int = Field(default=5, alias="RAG_TOP_K")
     rag_embedding_dimensions: int = Field(default=1024, alias="RAG_EMBED_DIMENSIONS")
     rag_embedding_name: str = Field(default="default", alias="RAG_EMBED_NAME")
+
+    enable_ocr: bool = Field(default=True, alias="ENABLE_OCR")
+    ocr_languages: str = Field(default="it,en", alias="OCR_LANGUAGES")
+    enable_table_captioning: bool = Field(default=True, alias="ENABLE_TABLE_CAPTIONING")
+
+    # Google Cloud Document AI
+    google_application_credentials: str = Field(
+        default="",
+        alias="GOOGLE_APPLICATION_CREDENTIALS",
+    )
+    google_cloud_project_id: str = Field(
+        default="",
+        alias="GOOGLE_CLOUD_PROJECT_ID",
+    )
+    document_ai_processor_id: str = Field(
+        default="",
+        alias="DOCUMENT_AI_PROCESSOR_ID",
+    )
+    document_ai_location: str = Field(
+        default="eu",
+        alias="DOCUMENT_AI_LOCATION",
+    )
 
     celery_queue_name: str = Field(
         default="documents", alias="CELERY_QUEUE_NAME"
